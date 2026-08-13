@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx'
 import { query } from '../db.js'
 import { verifyPassword, hashPassword } from '../utils/password.js'
 import { signToken, requireAuth, requireRole } from '../middleware/auth.js'
+import { buildScores } from '../utils/scoring.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
@@ -154,6 +155,136 @@ router.get('/admin/sync-status', async (req, res) => {
     ORDER BY s.name
   `)
   res.json(rows)
+})
+
+// ---------------------------------------------------------------------------
+// Results -- one row per student assessment with every question's answer,
+// per-subject scores, and an overall score. Powers the admin dashboard's
+// Results page and its Excel export.
+// ---------------------------------------------------------------------------
+async function fetchResultRows() {
+  const { rows } = await query(`
+    SELECT
+      a.uuid AS assessment_uuid,
+      s.name AS school_name,
+      u.name AS teacher_name,
+      st.first_name, st.last_name, st.age, st.gender,
+      a.completed_at,
+      r.question_code, q.domain, r.answer
+    FROM assessments a
+    JOIN students st ON st.id = a.student_id
+    JOIN schools s ON s.id = a.school_id
+    JOIN users u ON u.id = a.teacher_id
+    LEFT JOIN responses r ON r.assessment_uuid = a.uuid
+    LEFT JOIN questions q ON q.code = r.question_code
+    ORDER BY s.name, st.last_name, st.first_name
+  `)
+
+  // Group the flat SQL rows (one per question answer) back into one
+  // record per assessment, then compute scores for each.
+  const byAssessment = new Map()
+  for (const row of rows) {
+    if (!byAssessment.has(row.assessment_uuid)) {
+      byAssessment.set(row.assessment_uuid, {
+        schoolName: row.school_name,
+        teacherName: row.teacher_name,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        age: row.age,
+        gender: row.gender,
+        completedAt: row.completed_at,
+        responseRows: []
+      })
+    }
+    byAssessment.get(row.assessment_uuid).responseRows.push({
+      domain: row.domain, questionCode: row.question_code, answer: row.answer
+    })
+  }
+
+  return [...byAssessment.values()].map(a => {
+    const { domainScores, overallScore, answers } = buildScores(a.responseRows)
+    return { ...a, domainScores, overallScore, answers }
+  })
+}
+
+// GET /api/admin/results -- JSON, for the dashboard table
+router.get('/admin/results', async (req, res) => {
+  const results = await fetchResultRows()
+  res.json(results.map(({ responseRows, ...rest }) => rest)) // drop the raw grouping scaffold
+})
+
+// GET /api/admin/results/export -- full-detail Excel workbook
+router.get('/admin/results/export', async (req, res) => {
+  const results = await fetchResultRows()
+  const { rows: questions } = await query('SELECT code, domain, label, display_order FROM questions ORDER BY display_order')
+  const domains = [...new Set(questions.map(q => q.domain))]
+
+  // Sheet 1: every student, every question's answer, every domain score
+  const detailRows = results.map(r => {
+    const row = {
+      'School': r.schoolName,
+      'Teacher': r.teacherName,
+      'First Name': r.firstName,
+      'Last Name': r.lastName,
+      'Age': r.age,
+      'Gender': r.gender
+    }
+    for (const q of questions) row[q.code] = r.answers[q.code] || ''
+    for (const d of domains) row[`${d} Score (%)`] = r.domainScores[d] ?? ''
+    row['Overall Score (%)'] = r.overallScore
+    return row
+  })
+
+  // Sheet 2: per-school aggregate
+  const bySchool = {}
+  for (const r of results) {
+    bySchool[r.schoolName] = bySchool[r.schoolName] || { school: r.schoolName, scores: [] }
+    bySchool[r.schoolName].scores.push(r.overallScore)
+  }
+  const schoolSummaryRows = Object.values(bySchool).map(s => ({
+    'School': s.school,
+    'Students Assessed': s.scores.length,
+    'Average Overall Score (%)': Math.round((s.scores.reduce((a, b) => a + b, 0) / s.scores.length) * 10) / 10
+  }))
+
+  // Sheet 3: by gender
+  const byGender = {}
+  for (const r of results) {
+    const g = r.gender || 'Unspecified'
+    byGender[g] = byGender[g] || []
+    byGender[g].push(r.overallScore)
+  }
+  const genderRows = Object.entries(byGender).map(([gender, scores]) => ({
+    'Gender': gender === 'F' ? 'Girls' : gender === 'M' ? 'Boys' : gender,
+    'Students Assessed': scores.length,
+    'Average Overall Score (%)': Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+  }))
+
+  // Sheet 4: by age
+  const byAge = {}
+  for (const r of results) {
+    const age = r.age ?? 'Unspecified'
+    byAge[age] = byAge[age] || []
+    byAge[age].push(r.overallScore)
+  }
+  const ageRows = Object.entries(byAge)
+    .sort(([a], [b]) => (a === 'Unspecified' ? 1 : b === 'Unspecified' ? -1 : Number(a) - Number(b)))
+    .map(([age, scores]) => ({
+      'Age': age,
+      'Students Assessed': scores.length,
+      'Average Overall Score (%)': Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+    }))
+
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Student Results')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(schoolSummaryRows), 'By School')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(genderRows), 'By Gender')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(ageRows), 'By Age')
+
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  res.setHeader('Content-Disposition', 'attachment; filename="takmil-preassessment-results.xlsx"')
+  res.send(buffer)
 })
 
 export default router
