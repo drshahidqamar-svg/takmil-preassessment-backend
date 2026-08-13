@@ -13,7 +13,10 @@ export function signToken(payload) {
 
 export function requireAuth(req, res, next) {
   const header = req.headers.authorization || ''
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null
+  // A plain <a href> / window.location download can't set a custom
+  // Authorization header, so the Excel export link falls back to a
+  // ?token= query param. Everything else still uses the header.
+  const token = header.startsWith('Bearer ') ? header.slice(7) : (req.query.token || null)
   if (!token) return res.status(401).json({ error: 'Missing token' })
 
   try {
