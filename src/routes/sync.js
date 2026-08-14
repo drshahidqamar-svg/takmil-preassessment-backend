@@ -5,7 +5,8 @@ import { requireAuth } from '../middleware/auth.js'
 const router = Router()
 
 // POST /api/sync  { assessments: [ { uuid, studentId, teacherId, schoolId,
-//                                     startedAt, completedAt, responses: { code: answer } }, ... ] }
+//                                     startedAt, completedAt, latitude, longitude,
+//                                     locationAccuracy, responses: { code: answer } }, ... ] }
 //
 // Accepts everything a phone queued while offline, in one request. Every
 // assessment carries a uuid that was generated ON THE PHONE, not here --
@@ -13,6 +14,10 @@ const router = Router()
 // a dropped connection can never create duplicate rows. The response
 // tells the client exactly which uuids landed, so it can safely clear
 // only those from its local queue.
+//
+// latitude/longitude are optional -- a phone with location permission
+// denied still submits normally, just without coordinates. That absence
+// itself becomes a data point (see the "no_location" integrity flag).
 router.post('/sync', requireAuth, async (req, res) => {
   const { assessments } = req.body || {}
   if (!Array.isArray(assessments) || assessments.length === 0) {
@@ -29,11 +34,17 @@ router.post('/sync', requireAuth, async (req, res) => {
       if (!a.uuid || !a.studentId || !a.teacherId || !a.schoolId) continue
 
       const result = await client.query(
-        `INSERT INTO assessments (uuid, student_id, teacher_id, school_id, device_id, started_at, completed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO assessments
+           (uuid, student_id, teacher_id, school_id, device_id, started_at, completed_at,
+            latitude, longitude, location_accuracy_m)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (uuid) DO NOTHING
          RETURNING uuid`,
-        [a.uuid, a.studentId, a.teacherId, a.schoolId, a.deviceId || null, a.startedAt || null, a.completedAt || null]
+        [
+          a.uuid, a.studentId, a.teacherId, a.schoolId, a.deviceId || null,
+          a.startedAt || null, a.completedAt || null,
+          a.latitude ?? null, a.longitude ?? null, a.locationAccuracy ?? null
+        ]
       )
 
       // Whether this insert was fresh or a no-op retry, make sure every

@@ -5,6 +5,7 @@ import { query } from '../db.js'
 import { verifyPassword, hashPassword } from '../utils/password.js'
 import { signToken, requireAuth, requireRole } from '../middleware/auth.js'
 import { buildScores } from '../utils/scoring.js'
+import { computeIntegrityFlags, FLAG_LABELS } from '../utils/integrity.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
@@ -166,10 +167,12 @@ async function fetchResultRows() {
   const { rows } = await query(`
     SELECT
       a.uuid AS assessment_uuid,
+      a.teacher_id, a.school_id,
       s.name AS school_name,
       u.name AS teacher_name,
       st.first_name, st.last_name, st.age, st.gender,
-      a.completed_at,
+      a.started_at, a.completed_at,
+      a.latitude, a.longitude, a.location_accuracy_m,
       r.question_code, q.domain, r.answer
     FROM assessments a
     JOIN students st ON st.id = a.student_id
@@ -186,13 +189,20 @@ async function fetchResultRows() {
   for (const row of rows) {
     if (!byAssessment.has(row.assessment_uuid)) {
       byAssessment.set(row.assessment_uuid, {
+        uuid: row.assessment_uuid,
+        teacherId: row.teacher_id,
+        schoolId: row.school_id,
         schoolName: row.school_name,
         teacherName: row.teacher_name,
         firstName: row.first_name,
         lastName: row.last_name,
         age: row.age,
         gender: row.gender,
+        startedAt: row.started_at,
         completedAt: row.completed_at,
+        latitude: row.latitude,
+        longitude: row.longitude,
+        locationAccuracyM: row.location_accuracy_m,
         responseRows: []
       })
     }
@@ -201,16 +211,20 @@ async function fetchResultRows() {
     })
   }
 
-  return [...byAssessment.values()].map(a => {
+  const results = [...byAssessment.values()].map(a => {
     const { domainScores, overallScore, answers } = buildScores(a.responseRows)
     return { ...a, domainScores, overallScore, answers }
   })
+
+  const { rows: schools } = await query('SELECT id, latitude, longitude FROM schools')
+  const flagsByUuid = computeIntegrityFlags(results, schools)
+  return results.map(r => ({ ...r, flags: flagsByUuid.get(r.uuid) || [] }))
 }
 
 // GET /api/admin/results -- JSON, for the dashboard table
 router.get('/admin/results', async (req, res) => {
   const results = await fetchResultRows()
-  res.json(results.map(({ responseRows, ...rest }) => rest)) // drop the raw grouping scaffold
+  res.json(results.map(({ responseRows, teacherId, schoolId, ...rest }) => rest))
 })
 
 // GET /api/admin/results/export -- full-detail Excel workbook
@@ -232,6 +246,10 @@ router.get('/admin/results/export', async (req, res) => {
     for (const q of questions) row[q.code] = r.answers[q.code] || ''
     for (const d of domains) row[`${d} Score (%)`] = r.domainScores[d] ?? ''
     row['Overall Score (%)'] = r.overallScore
+    row['Submitted At'] = r.completedAt ? new Date(r.completedAt).toLocaleString() : ''
+    row['GPS Latitude'] = r.latitude ?? ''
+    row['GPS Longitude'] = r.longitude ?? ''
+    row['Review Flags'] = r.flags.map(f => FLAG_LABELS[f] || f).join('; ')
     return row
   })
 
@@ -275,11 +293,23 @@ router.get('/admin/results/export', async (req, res) => {
       'Average Overall Score (%)': Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
     }))
 
+  // Sheet 5: flagged submissions only -- the actual review worklist
+  const flaggedRows = results
+    .filter(r => r.flags.length > 0)
+    .map(r => ({
+      'School': r.schoolName,
+      'Teacher': r.teacherName,
+      'Student': `${r.firstName} ${r.lastName}`,
+      'Submitted At': r.completedAt ? new Date(r.completedAt).toLocaleString() : '',
+      'Reasons Flagged': r.flags.map(f => FLAG_LABELS[f] || f).join('; ')
+    }))
+
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Student Results')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(schoolSummaryRows), 'By School')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(genderRows), 'By Gender')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(ageRows), 'By Age')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(flaggedRows), 'Flagged for Review')
 
   const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
