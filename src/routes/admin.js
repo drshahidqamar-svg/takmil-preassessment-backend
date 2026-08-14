@@ -31,14 +31,17 @@ router.use(requireAuth, requireRole('admin'))
 // Schools
 // ---------------------------------------------------------------------------
 router.get('/admin/schools', async (req, res) => {
-  const { rows } = await query('SELECT id, name FROM schools ORDER BY name')
+  const { rows } = await query('SELECT id, name, province FROM schools ORDER BY name')
   res.json(rows)
 })
 
 router.post('/admin/schools', async (req, res) => {
-  const { name } = req.body || {}
+  const { name, province } = req.body || {}
   if (!name) return res.status(400).json({ error: 'name is required' })
-  const { rows } = await query('INSERT INTO schools (name) VALUES ($1) RETURNING id, name', [name])
+  const { rows } = await query(
+    'INSERT INTO schools (name, province) VALUES ($1, $2) RETURNING id, name, province',
+    [name, province || null]
+  )
   res.status(201).json(rows[0])
 })
 
@@ -168,7 +171,7 @@ async function fetchResultRows() {
     SELECT
       a.uuid AS assessment_uuid,
       a.teacher_id, a.school_id,
-      s.name AS school_name,
+      s.name AS school_name, s.province AS school_province,
       u.name AS teacher_name,
       st.first_name, st.last_name, st.age, st.gender,
       a.started_at, a.completed_at,
@@ -193,6 +196,7 @@ async function fetchResultRows() {
         teacherId: row.teacher_id,
         schoolId: row.school_id,
         schoolName: row.school_name,
+        schoolProvince: row.school_province,
         teacherName: row.teacher_name,
         firstName: row.first_name,
         lastName: row.last_name,
@@ -237,6 +241,7 @@ router.get('/admin/results/export', async (req, res) => {
   const detailRows = results.map(r => {
     const row = {
       'School': r.schoolName,
+      'Province': r.schoolProvince || '',
       'Teacher': r.teacherName,
       'First Name': r.firstName,
       'Last Name': r.lastName,
@@ -246,7 +251,11 @@ router.get('/admin/results/export', async (req, res) => {
     for (const q of questions) row[q.code] = r.answers[q.code] || ''
     for (const d of domains) row[`${d} Score (%)`] = r.domainScores[d] ?? ''
     row['Overall Score (%)'] = r.overallScore
+    row['Started At'] = r.startedAt ? new Date(r.startedAt).toLocaleString() : ''
     row['Submitted At'] = r.completedAt ? new Date(r.completedAt).toLocaleString() : ''
+    row['Duration (min)'] = (r.startedAt && r.completedAt)
+      ? Math.round(((new Date(r.completedAt) - new Date(r.startedAt)) / 60000) * 10) / 10
+      : ''
     row['GPS Latitude'] = r.latitude ?? ''
     row['GPS Longitude'] = r.longitude ?? ''
     row['Review Flags'] = r.flags.map(f => FLAG_LABELS[f] || f).join('; ')
