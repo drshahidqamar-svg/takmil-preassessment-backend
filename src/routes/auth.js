@@ -38,7 +38,10 @@ router.post('/login', async (req, res) => {
 
   const { rows: students } = await query(
     `SELECT id, school_id AS "schoolId", first_name AS "firstName", last_name AS "lastName",
-            age, date_of_birth AS "dateOfBirth", gender
+            age, date_of_birth AS "dateOfBirth", gender,
+            father_name AS "fatherName", mother_tongue AS "motherTongue",
+            disability, reason_out_of_school AS "reasonOutOfSchool",
+            religion, village_place AS "villagePlace", date_of_joining AS "dateOfJoining"
      FROM students
      WHERE school_id = $1
      ORDER BY last_name`,

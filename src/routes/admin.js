@@ -122,6 +122,17 @@ router.post('/admin/students/upload', upload.single('file'), async (req, res) =>
     const genderRaw = (row['Gender'] ?? row['gender'] ?? '').toString().trim().toUpperCase()
     const gender = ['M', 'F'].includes(genderRaw) ? genderRaw : null
 
+    // Optional "Section I" fields -- most rosters won't have these yet
+    // (they're normally collected by the teacher during the assessment
+    // itself), but a school with existing digital enrollment records can
+    // supply them here instead of re-asking in the field.
+    const fatherName = row['Father Name'] ?? row['father_name'] ?? null
+    const motherTongue = row['Mother Tongue'] ?? row['mother_tongue'] ?? null
+    const disability = row['Disability'] ?? row['disability'] ?? null
+    const reasonOutOfSchool = row['Reason Out of School'] ?? row['reason_out_of_school'] ?? null
+    const religion = row['Religion'] ?? row['religion'] ?? null
+    const villagePlace = row['Village/Place'] ?? row['village_place'] ?? null
+
     if (!schoolName || !firstName || !lastName) {
       skipped.push({ row: i + 2, reason: 'Missing School Name, First Name, or Last Name' })
       continue
@@ -129,10 +140,15 @@ router.post('/admin/students/upload', upload.single('file'), async (req, res) =>
 
     const schoolId = await schoolIdFor(String(schoolName))
     const { rows: [student] } = await query(
-      `INSERT INTO students (school_id, first_name, last_name, age, gender, uploaded_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO students
+         (school_id, first_name, last_name, age, gender, uploaded_by,
+          father_name, mother_tongue, disability, reason_out_of_school, religion, village_place)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id`,
-      [schoolId, String(firstName).trim(), String(lastName).trim(), age, gender, req.user.userId]
+      [
+        schoolId, String(firstName).trim(), String(lastName).trim(), age, gender, req.user.userId,
+        fatherName, motherTongue, disability, reasonOutOfSchool, religion, villagePlace
+      ]
     )
     inserted.push(student.id)
   }
@@ -174,6 +190,7 @@ async function fetchResultRows() {
       s.name AS school_name, s.province AS school_province,
       u.name AS teacher_name,
       st.first_name, st.last_name, st.age, st.gender,
+      st.father_name, st.mother_tongue, st.disability, st.reason_out_of_school, st.religion, st.village_place,
       a.started_at, a.completed_at,
       a.latitude, a.longitude, a.location_accuracy_m,
       r.question_code, q.domain, r.answer
@@ -202,6 +219,12 @@ async function fetchResultRows() {
         lastName: row.last_name,
         age: row.age,
         gender: row.gender,
+        fatherName: row.father_name,
+        motherTongue: row.mother_tongue,
+        disability: row.disability,
+        reasonOutOfSchool: row.reason_out_of_school,
+        religion: row.religion,
+        villagePlace: row.village_place,
         startedAt: row.started_at,
         completedAt: row.completed_at,
         latitude: row.latitude,
@@ -246,7 +269,13 @@ router.get('/admin/results/export', async (req, res) => {
       'First Name': r.firstName,
       'Last Name': r.lastName,
       'Age': r.age,
-      'Gender': r.gender
+      'Gender': r.gender,
+      'Father Name': r.fatherName || '',
+      'Mother Tongue': r.motherTongue || '',
+      'Disability': r.disability || '',
+      'Reason Out of School': r.reasonOutOfSchool || '',
+      'Religion': r.religion || '',
+      'Village/Place': r.villagePlace || ''
     }
     for (const q of questions) row[q.code] = r.answers[q.code] || ''
     for (const d of domains) row[`${d} Score (%)`] = r.domainScores[d] ?? ''

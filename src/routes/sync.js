@@ -60,6 +60,35 @@ router.post('/sync', requireAuth, async (req, res) => {
         )
       }
 
+      // "Section I: Basic Information" from the paper form -- collected by
+      // the teacher at the same sitting as the assessment. Scoped to
+      // (studentId AND schoolId) so a teacher can only ever update a
+      // student at their own school. COALESCE means a blank/omitted field
+      // in this submission never erases a value saved by an earlier one --
+      // important since the same student can't be re-uploaded through
+      // this path, only enriched.
+      const info = a.studentBasicInfo
+      if (info && Object.keys(info).length > 0) {
+        await client.query(
+          `UPDATE students SET
+             father_name = COALESCE($1, father_name),
+             date_of_birth = COALESCE($2, date_of_birth),
+             mother_tongue = COALESCE($3, mother_tongue),
+             disability = COALESCE($4, disability),
+             reason_out_of_school = COALESCE($5, reason_out_of_school),
+             religion = COALESCE($6, religion),
+             village_place = COALESCE($7, village_place),
+             date_of_joining = COALESCE($8, date_of_joining)
+           WHERE id = $9 AND school_id = $10`,
+          [
+            info.fatherName || null, info.dateOfBirth || null, info.motherTongue || null,
+            info.disability || null, info.reasonOutOfSchool || null, info.religion || null,
+            info.villagePlace || null, info.dateOfJoining || null,
+            a.studentId, a.schoolId
+          ]
+        )
+      }
+
       accepted.push(a.uuid)
     }
 
