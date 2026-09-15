@@ -1,17 +1,3 @@
-// Runs every .sql file in /migrations, in filename order, against
-// whatever DATABASE_URL points to. Tracks what's already been applied in
-// a small table so re-running is always safe.
-//
-// This is the whole "move to Azure later" story: point DATABASE_URL at
-// the Azure connection string instead of Railway's, run
-// `npm run migrate`, and you get an identical `preassessment` schema
-// there -- no manual SQL, no drift between environments.
-//
-// For actually copying the DATA (not just the schema) when you migrate,
-// use pg_dump/pg_restore scoped to this schema:
-//   pg_dump -n preassessment --no-owner "$RAILWAY_DATABASE_URL" > dump.sql
-//   psql "$AZURE_DATABASE_URL" < dump.sql
-
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -22,10 +8,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const migrationsDir = path.join(__dirname, '..', 'migrations')
 
 function sslConfig() {
-  // Railway and Azure Postgres both require SSL, but neither presents a
-  // certificate chain that Node trusts by default. This keeps the
-  // connection encrypted while not fighting cert validation -- the
-  // standard pattern for managed Postgres providers.
   if (process.env.PGSSLMODE === 'disable') return false
   return { rejectUnauthorized: false }
 }

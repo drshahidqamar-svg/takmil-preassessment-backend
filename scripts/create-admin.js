@@ -1,8 +1,5 @@
-// The admin API routes all require an admin token to call -- which means
-// there's no way to create the FIRST admin account through the API
-// itself. Run this once after migrating, to create that first account.
-//
-// Usage:  node scripts/create-admin.js "Program Admin" admin youradminpassword
+// Run once after migrating, to create the first admin account.
+// Usage:  node scripts/create-admin.js "Program Admin" admin yourpassword
 
 import { pool } from '../src/db.js'
 import { hashPassword } from '../src/utils/password.js'

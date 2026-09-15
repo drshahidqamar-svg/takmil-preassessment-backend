@@ -1,28 +1,6 @@
-// ============================================================================
-// INTEGRITY FLAGGING
-// ============================================================================
-// IMPORTANT FRAMING: none of this proves who actually answered the
-// questions -- there's no camera or audio, and a genuinely careful
-// teacher can still trigger a false flag (e.g. two students who happen
-// to answer identically). What this DOES do is surface the small
-// percentage of submissions worth a human looking at, out of what's
-// otherwise an unreviewable volume across hundreds of schools. Every
-// flag should be read as "worth a second look," not "confirmed fraud."
-//
-// Flags implemented:
-//   - too_fast          Completed implausibly quickly for 26 questions
-//                        asked of a real child
-//   - straight_line      Every question given the identical answer
-//   - duplicate_pattern   Byte-identical answer set to another student's
-//                        assessment submitted by the same teacher
-//   - no_location        Device didn't provide GPS coordinates at all
-//   - location_outlier    Submitted from far outside where this school's
-//                        other submissions normally come from
-// ============================================================================
-
-const TOO_FAST_SECONDS = 90 // ~3.5s/question minimum for 26 questions -- generous floor, not a real pace
-const OUTLIER_RADIUS_METERS = 2000 // rural GPS drift is real; keep this loose to avoid false alarms
-const MIN_SAMPLES_FOR_SCHOOL_LOCATION = 3 // don't judge a school's "normal" location off only 1-2 points
+const TOO_FAST_SECONDS = 90
+const OUTLIER_RADIUS_METERS = 2000
+const MIN_SAMPLES_FOR_SCHOOL_LOCATION = 3
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000
@@ -39,22 +17,13 @@ function median(nums) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
 }
 
-// answers: { questionCode: 'yes'|'partial'|'no', ... }
 function answerFingerprint(answers) {
   return Object.keys(answers).sort().map(k => `${k}:${answers[k]}`).join('|')
 }
 
-/**
- * Computes flags for every assessment in one pass.
- * @param assessments Array of { uuid, teacherId, schoolId, startedAt, completedAt,
- *                                latitude, longitude, answers }
- * @param schools     Array of { id, latitude, longitude } (admin-set reference, may be null)
- * @returns Map of uuid -> string[] of flag codes
- */
 export function computeIntegrityFlags(assessments, schools) {
   const flags = new Map(assessments.map(a => [a.uuid, []]))
 
-  // ---- straight_line & too_fast: purely per-assessment, no cross-referencing needed ----
   for (const a of assessments) {
     const answerValues = Object.values(a.answers)
     if (answerValues.length > 1 && new Set(answerValues).size === 1) {
@@ -71,7 +40,6 @@ export function computeIntegrityFlags(assessments, schools) {
     }
   }
 
-  // ---- duplicate_pattern: group by teacher, compare answer fingerprints ----
   const byTeacher = {}
   for (const a of assessments) {
     byTeacher[a.teacherId] = byTeacher[a.teacherId] || []
@@ -92,15 +60,12 @@ export function computeIntegrityFlags(assessments, schools) {
     }
   }
 
-  // ---- location_outlier: compare each submission against its school's expected location ----
   const schoolRef = {}
   for (const s of schools) {
     if (s.latitude != null && s.longitude != null) {
       schoolRef[s.id] = { lat: s.latitude, lng: s.longitude, source: 'admin-set' }
     }
   }
-  // For schools with no admin-set reference, infer one from the median of
-  // their own submissions (only once there's enough data to be meaningful).
   const bySchool = {}
   for (const a of assessments) {
     if (a.latitude == null || a.longitude == null) continue

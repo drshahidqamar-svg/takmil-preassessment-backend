@@ -6,8 +6,6 @@ if (!SECRET) {
 }
 
 export function signToken(payload) {
-  // 90 days: a teacher in a school with patchy signal shouldn't be
-  // forced to re-authenticate (which needs connectivity) every few days.
   return jwt.sign(payload, SECRET, { expiresIn: '90d' })
 }
 

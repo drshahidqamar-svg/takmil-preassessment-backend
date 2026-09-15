@@ -2,7 +2,7 @@ import { Router } from 'express'
 import multer from 'multer'
 import * as XLSX from 'xlsx'
 import { query } from '../db.js'
-import { verifyPassword, hashPassword } from '../utils/password.js'
+import { verifyPassword, hashPassword, generateTempPassword } from '../utils/password.js'
 import { signToken, requireAuth, requireRole } from '../middleware/auth.js'
 import { buildScores } from '../utils/scoring.js'
 import { computeIntegrityFlags, FLAG_LABELS } from '../utils/integrity.js'
@@ -24,7 +24,6 @@ router.post('/admin/login', async (req, res) => {
   res.json({ token, adminId: admin.id, name: admin.name })
 })
 
-// Everything below this line requires a valid admin token.
 router.use(requireAuth, requireRole('admin'))
 
 // ---------------------------------------------------------------------------
@@ -43,6 +42,52 @@ router.post('/admin/schools', async (req, res) => {
     [name, province || null]
   )
   res.status(201).json(rows[0])
+})
+
+// ---------------------------------------------------------------------------
+// NEW: Bulk school upload -- .csv/.xlsx with columns: School Name, Province
+// Skips names that already exist (case-insensitive) rather than creating
+// duplicates or overwriting -- a re-run of the same sheet is always safe.
+// ---------------------------------------------------------------------------
+router.post('/admin/schools/upload', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded (expected field name "file")' })
+
+  let rows
+  try {
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' })
+    const sheet = workbook.Sheets[workbook.SheetNames[0]]
+    rows = XLSX.utils.sheet_to_json(sheet, { defval: null })
+  } catch (err) {
+    return res.status(400).json({ error: 'Could not read file. Upload a .csv or .xlsx.' })
+  }
+  if (rows.length === 0) return res.status(400).json({ error: 'File has no rows' })
+
+  const inserted = []
+  const skipped = []
+
+  for (const [i, row] of rows.entries()) {
+    const name = row['School Name'] ?? row['school_name'] ?? row['Name']
+    const province = row['Province'] ?? row['province'] ?? null
+
+    if (!name || !String(name).trim()) {
+      skipped.push({ row: i + 2, reason: 'Missing School Name' })
+      continue
+    }
+
+    const existing = await query('SELECT id FROM schools WHERE lower(name) = lower($1)', [String(name).trim()])
+    if (existing.rows[0]) {
+      skipped.push({ row: i + 2, reason: `"${name}" already exists` })
+      continue
+    }
+
+    const { rows: [school] } = await query(
+      'INSERT INTO schools (name, province) VALUES ($1, $2) RETURNING id',
+      [String(name).trim(), province ? String(province).trim() : null]
+    )
+    inserted.push(school.id)
+  }
+
+  res.json({ insertedCount: inserted.length, skipped })
 })
 
 // ---------------------------------------------------------------------------
@@ -78,10 +123,91 @@ router.get('/admin/teachers', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// NEW: Bulk teacher upload -- .csv/.xlsx with columns:
+//   Teacher Name, Username, School Name, Password (optional)
+// If Password is blank, a secure temporary password is generated and
+// returned in the response so the admin can copy it out immediately --
+// this is the ONE place a plaintext password is ever returned by this
+// API, and it's never stored anywhere; only its hash is saved. There is
+// no email/SMS delivery in this system, so this is the only way the
+// admin actually learns what was generated.
+// ---------------------------------------------------------------------------
+router.post('/admin/teachers/upload', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded (expected field name "file")' })
+
+  let rows
+  try {
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' })
+    const sheet = workbook.Sheets[workbook.SheetNames[0]]
+    rows = XLSX.utils.sheet_to_json(sheet, { defval: null })
+  } catch (err) {
+    return res.status(400).json({ error: 'Could not read file. Upload a .csv or .xlsx.' })
+  }
+  if (rows.length === 0) return res.status(400).json({ error: 'File has no rows' })
+
+  const schoolCache = new Map()
+  async function findSchoolId(name) {
+    const key = String(name).trim().toLowerCase()
+    if (schoolCache.has(key)) return schoolCache.get(key)
+    const { rows } = await query('SELECT id FROM schools WHERE lower(name) = $1', [key])
+    const id = rows[0]?.id || null
+    schoolCache.set(key, id)
+    return id
+  }
+
+  const created = []
+  const skipped = []
+
+  for (const [i, row] of rows.entries()) {
+    const teacherName = row['Teacher Name'] ?? row['teacher_name'] ?? row['Name']
+    const username = row['Username'] ?? row['username']
+    const schoolName = row['School Name'] ?? row['school_name']
+    const rawPassword = row['Password'] ?? row['password']
+
+    if (!teacherName || !username || !schoolName) {
+      skipped.push({ row: i + 2, reason: 'Missing Teacher Name, Username, or School Name' })
+      continue
+    }
+
+    const schoolId = await findSchoolId(schoolName)
+    if (!schoolId) {
+      skipped.push({ row: i + 2, reason: `School "${schoolName}" not found — upload schools first` })
+      continue
+    }
+
+    const password = (rawPassword && String(rawPassword).trim()) || generateTempPassword()
+
+    try {
+      const { rows: [teacher] } = await query(
+        `INSERT INTO users (name, role, school_id, username, password_hash)
+         VALUES ($1, 'teacher', $2, $3, $4)
+         RETURNING id`,
+        [String(teacherName).trim(), schoolId, String(username).trim(), hashPassword(password)]
+      )
+      created.push({
+        id: teacher.id,
+        name: String(teacherName).trim(),
+        username: String(username).trim(),
+        schoolName: String(schoolName).trim(),
+        password,
+        passwordWasGenerated: !rawPassword || !String(rawPassword).trim()
+      })
+    } catch (err) {
+      if (err.code === '23505') {
+        skipped.push({ row: i + 2, reason: `Username "${username}" is already taken` })
+      } else {
+        skipped.push({ row: i + 2, reason: 'Unexpected error creating this account' })
+      }
+    }
+  }
+
+  res.json({ insertedCount: created.length, created, skipped })
+})
+
+// ---------------------------------------------------------------------------
 // Student roster upload -- accepts .csv or .xlsx matching the sheet
-// columns: School Name, First Name, Last Name, Age, Gender.
-// (School Name is used to look up/create the school; every other row
-// column is optional beyond First Name / Last Name.)
+// columns: School Name, First Name, Last Name, Age, Gender (plus optional
+// Section I fields for schools with existing digital records).
 // ---------------------------------------------------------------------------
 router.post('/admin/students/upload', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded (expected field name "file")' })
@@ -122,10 +248,6 @@ router.post('/admin/students/upload', upload.single('file'), async (req, res) =>
     const genderRaw = (row['Gender'] ?? row['gender'] ?? '').toString().trim().toUpperCase()
     const gender = ['M', 'F'].includes(genderRaw) ? genderRaw : null
 
-    // Optional "Section I" fields -- most rosters won't have these yet
-    // (they're normally collected by the teacher during the assessment
-    // itself), but a school with existing digital enrollment records can
-    // supply them here instead of re-asking in the field.
     const fatherName = row['Father Name'] ?? row['father_name'] ?? null
     const motherTongue = row['Mother Tongue'] ?? row['mother_tongue'] ?? null
     const disability = row['Disability'] ?? row['disability'] ?? null
@@ -157,8 +279,7 @@ router.post('/admin/students/upload', upload.single('file'), async (req, res) =>
 })
 
 // ---------------------------------------------------------------------------
-// Sync status -- lets the admin see, across all 150+ schools, who has
-// actually synced and who's still sitting on data offline.
+// Sync status
 // ---------------------------------------------------------------------------
 router.get('/admin/sync-status', async (req, res) => {
   const { rows } = await query(`
@@ -178,9 +299,7 @@ router.get('/admin/sync-status', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// Results -- one row per student assessment with every question's answer,
-// per-subject scores, and an overall score. Powers the admin dashboard's
-// Results page and its Excel export.
+// Results
 // ---------------------------------------------------------------------------
 async function fetchResultRows() {
   const { rows } = await query(`
@@ -203,8 +322,6 @@ async function fetchResultRows() {
     ORDER BY s.name, st.last_name, st.first_name
   `)
 
-  // Group the flat SQL rows (one per question answer) back into one
-  // record per assessment, then compute scores for each.
   const byAssessment = new Map()
   for (const row of rows) {
     if (!byAssessment.has(row.assessment_uuid)) {
@@ -248,19 +365,16 @@ async function fetchResultRows() {
   return results.map(r => ({ ...r, flags: flagsByUuid.get(r.uuid) || [] }))
 }
 
-// GET /api/admin/results -- JSON, for the dashboard table
 router.get('/admin/results', async (req, res) => {
   const results = await fetchResultRows()
   res.json(results.map(({ responseRows, teacherId, schoolId, ...rest }) => rest))
 })
 
-// GET /api/admin/results/export -- full-detail Excel workbook
 router.get('/admin/results/export', async (req, res) => {
   const results = await fetchResultRows()
   const { rows: questions } = await query('SELECT code, domain, label, display_order FROM questions ORDER BY display_order')
   const domains = [...new Set(questions.map(q => q.domain))]
 
-  // Sheet 1: every student, every question's answer, every domain score
   const detailRows = results.map(r => {
     const row = {
       'School': r.schoolName,
@@ -291,7 +405,6 @@ router.get('/admin/results/export', async (req, res) => {
     return row
   })
 
-  // Sheet 2: per-school aggregate
   const bySchool = {}
   for (const r of results) {
     bySchool[r.schoolName] = bySchool[r.schoolName] || { school: r.schoolName, scores: [] }
@@ -303,7 +416,6 @@ router.get('/admin/results/export', async (req, res) => {
     'Average Overall Score (%)': Math.round((s.scores.reduce((a, b) => a + b, 0) / s.scores.length) * 10) / 10
   }))
 
-  // Sheet 3: by gender
   const byGender = {}
   for (const r of results) {
     const g = r.gender || 'Unspecified'
@@ -316,7 +428,6 @@ router.get('/admin/results/export', async (req, res) => {
     'Average Overall Score (%)': Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
   }))
 
-  // Sheet 4: by age
   const byAge = {}
   for (const r of results) {
     const age = r.age ?? 'Unspecified'
@@ -331,7 +442,6 @@ router.get('/admin/results/export', async (req, res) => {
       'Average Overall Score (%)': Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
     }))
 
-  // Sheet 5: flagged submissions only -- the actual review worklist
   const flaggedRows = results
     .filter(r => r.flags.length > 0)
     .map(r => ({

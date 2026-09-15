@@ -4,20 +4,6 @@ import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
-// POST /api/sync  { assessments: [ { uuid, studentId, teacherId, schoolId,
-//                                     startedAt, completedAt, latitude, longitude,
-//                                     locationAccuracy, responses: { code: answer } }, ... ] }
-//
-// Accepts everything a phone queued while offline, in one request. Every
-// assessment carries a uuid that was generated ON THE PHONE, not here --
-// so `ON CONFLICT (uuid) DO NOTHING` means resending the same batch after
-// a dropped connection can never create duplicate rows. The response
-// tells the client exactly which uuids landed, so it can safely clear
-// only those from its local queue.
-//
-// latitude/longitude are optional -- a phone with location permission
-// denied still submits normally, just without coordinates. That absence
-// itself becomes a data point (see the "no_location" integrity flag).
 router.post('/sync', requireAuth, async (req, res) => {
   const { assessments } = req.body || {}
   if (!Array.isArray(assessments) || assessments.length === 0) {
@@ -47,9 +33,6 @@ router.post('/sync', requireAuth, async (req, res) => {
         ]
       )
 
-      // Whether this insert was fresh or a no-op retry, make sure every
-      // response for it is present -- upsert on the (assessment, question)
-      // pair so a partial retry can't create duplicate answers either.
       const responses = a.responses || {}
       for (const [questionCode, answer] of Object.entries(responses)) {
         await client.query(
@@ -64,9 +47,7 @@ router.post('/sync', requireAuth, async (req, res) => {
       // the teacher at the same sitting as the assessment. Scoped to
       // (studentId AND schoolId) so a teacher can only ever update a
       // student at their own school. COALESCE means a blank/omitted field
-      // in this submission never erases a value saved by an earlier one --
-      // important since the same student can't be re-uploaded through
-      // this path, only enriched.
+      // in this submission never erases a value saved by an earlier one.
       const info = a.studentBasicInfo
       if (info && Object.keys(info).length > 0) {
         await client.query(

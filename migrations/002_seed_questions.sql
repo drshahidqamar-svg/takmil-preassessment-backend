@@ -1,6 +1,10 @@
--- Seeds the question bank exactly as given in the original assessment
--- sheet. Safe to re-run: ON CONFLICT means re-running migrations never
--- duplicates rows.
+-- Seeds the full original question bank. Note: the teacher app's
+-- question set was later trimmed to 15 questions (matching TAKMIL's
+-- real paper form) at the FRONTEND level only -- this migration is left
+-- as originally written rather than rewritten, since historical
+-- responses already reference some of the codes below via foreign key,
+-- and migrations should describe what actually happened, not be edited
+-- after the fact.
 
 INSERT INTO preassessment.questions (code, domain, label, display_order) VALUES
   ('LLLQ1', 'Local Language Literacy',      'Can Identify Alphabets',   1),

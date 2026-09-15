@@ -5,12 +5,6 @@ import { signToken } from '../middleware/auth.js'
 
 const router = Router()
 
-// POST /api/login  { username, password }
-//
-// This is the ONE endpoint the app calls while it still might be on a
-// weak connection at the school gate before heading out into the field --
-// everything else the teacher does after this is served from the
-// roster this returns, cached locally on the phone.
 router.post('/login', async (req, res) => {
   const { username, password } = req.body || {}
   if (!username || !password) {
@@ -26,8 +20,6 @@ router.post('/login', async (req, res) => {
   )
   const user = rows[0]
 
-  // Same error for "no such user" and "wrong password" -- don't leak
-  // which one it was.
   if (!user || !verifyPassword(password, user.password_hash)) {
     return res.status(401).json({ error: 'Incorrect username or password' })
   }
@@ -63,7 +55,7 @@ router.post('/login', async (req, res) => {
     schoolId: user.school_id,
     schoolName: user.school_name,
     students,
-    questions // lets the app fetch the question bank instead of hardcoding it
+    questions
   })
 })
 
