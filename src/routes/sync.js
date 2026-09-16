@@ -12,12 +12,33 @@ router.post('/sync', requireAuth, async (req, res) => {
 
   const client = await pool.connect()
   const accepted = []
+  const rejected = []
 
   try {
     await client.query('BEGIN')
 
     for (const a of assessments) {
       if (!a.uuid || !a.studentId || !a.teacherId || !a.schoolId) continue
+
+      // THE LOCK: once a student has any assessment on record, no other
+      // submission for that student is ever accepted -- checked here,
+      // not just in the app UI, because two different teachers on two
+      // different offline devices could both complete an assessment for
+      // the same student before either one syncs. Whichever reaches the
+      // server first wins; the second is rejected here, server-side,
+      // where it can't be raced around.
+      //
+      // Excluding this exact uuid keeps retries safe: resending the same
+      // already-accepted assessment (e.g. after a dropped connection)
+      // must not be treated as a duplicate of itself.
+      const existingForStudent = await client.query(
+        'SELECT uuid FROM assessments WHERE student_id = $1 AND uuid != $2 LIMIT 1',
+        [a.studentId, a.uuid]
+      )
+      if (existingForStudent.rows.length > 0) {
+        rejected.push({ uuid: a.uuid, reason: 'This student already has an assessment on record' })
+        continue
+      }
 
       const result = await client.query(
         `INSERT INTO assessments
@@ -74,11 +95,11 @@ router.post('/sync', requireAuth, async (req, res) => {
     }
 
     await client.query('COMMIT')
-    res.json({ accepted })
+    res.json({ accepted, rejected })
   } catch (err) {
     await client.query('ROLLBACK')
     console.error('Sync failed:', err.message)
-    res.status(500).json({ error: 'Sync failed, the phone will retry automatically', accepted: [] })
+    res.status(500).json({ error: 'Sync failed, the phone will retry automatically', accepted: [], rejected: [] })
   } finally {
     client.release()
   }

@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import * as XLSX from 'xlsx'
-import { query } from '../db.js'
+import { query, pool } from '../db.js'
 import { verifyPassword, hashPassword, generateTempPassword } from '../utils/password.js'
 import { signToken, requireAuth, requireRole } from '../middleware/auth.js'
 import { buildScores } from '../utils/scoring.js'
@@ -463,6 +463,99 @@ router.get('/admin/results/export', async (req, res) => {
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
   res.setHeader('Content-Disposition', 'attachment; filename="takmil-preassessment-results.xlsx"')
   res.send(buffer)
+})
+
+// ---------------------------------------------------------------------------
+// Students -- listing (there was previously no way to see the full roster
+// from the admin side; Results only showed students who already had an
+// assessment). Includes an assessment count so the delete confirmation
+// can warn exactly what will be removed.
+// ---------------------------------------------------------------------------
+router.get('/admin/students', async (req, res) => {
+  const { rows } = await query(`
+    SELECT
+      st.id, st.first_name AS "firstName", st.last_name AS "lastName",
+      st.age, st.gender, s.name AS "schoolName", s.id AS "schoolId",
+      COUNT(a.uuid) AS "assessmentCount"
+    FROM students st
+    JOIN schools s ON s.id = st.school_id
+    LEFT JOIN assessments a ON a.student_id = st.id
+    GROUP BY st.id, s.name, s.id
+    ORDER BY s.name, st.last_name
+  `)
+  res.json(rows)
+})
+
+// ---------------------------------------------------------------------------
+// Delete endpoints -- safety scales with how destructive each one is.
+//
+//   School   -- blocked if it still has any students or teachers. The
+//               most destructive possible action (an entire region's
+//               data), so it must be emptied deliberately first.
+//   Teacher  -- blocked if they've collected any assessments. Removing
+//               an account should never be able to destroy the real
+//               data that account gathered.
+//   Student  -- allowed, and cascades to remove their assessment too.
+//               This is the intended correction path now that the app
+//               no longer allows a "redo": delete the wrong student,
+//               re-add them via roster upload, teacher submits fresh.
+// ---------------------------------------------------------------------------
+router.delete('/admin/schools/:id', async (req, res) => {
+  const { id } = req.params
+  const { rows: [counts] } = await query(
+    `SELECT
+       (SELECT COUNT(*) FROM students WHERE school_id = $1) AS students,
+       (SELECT COUNT(*) FROM users WHERE school_id = $1) AS teachers`,
+    [id]
+  )
+  if (Number(counts.students) > 0 || Number(counts.teachers) > 0) {
+    return res.status(409).json({
+      error: `Cannot delete: this school still has ${counts.students} student(s) and ${counts.teachers} teacher(s). Remove them first.`
+    })
+  }
+  const { rowCount } = await query('DELETE FROM schools WHERE id = $1', [id])
+  if (rowCount === 0) return res.status(404).json({ error: 'School not found' })
+  res.json({ deleted: true })
+})
+
+router.delete('/admin/teachers/:id', async (req, res) => {
+  const { id } = req.params
+  const { rows: [{ count }] } = await query('SELECT COUNT(*) FROM assessments WHERE teacher_id = $1', [id])
+  if (Number(count) > 0) {
+    return res.status(409).json({
+      error: `Cannot delete: this teacher has ${count} assessment(s) on record. That data must stay attached to an account.`
+    })
+  }
+  const { rowCount } = await query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'teacher'])
+  if (rowCount === 0) return res.status(404).json({ error: 'Teacher not found' })
+  res.json({ deleted: true })
+})
+
+router.delete('/admin/students/:id', async (req, res) => {
+  const { id } = req.params
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    // Cascade: responses -> assessments -> student, in that FK order.
+    await client.query(
+      `DELETE FROM responses WHERE assessment_uuid IN (SELECT uuid FROM assessments WHERE student_id = $1)`,
+      [id]
+    )
+    const { rowCount: assessmentsDeleted } = await client.query('DELETE FROM assessments WHERE student_id = $1', [id])
+    const { rowCount: studentDeleted } = await client.query('DELETE FROM students WHERE id = $1', [id])
+    if (studentDeleted === 0) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Student not found' })
+    }
+    await client.query('COMMIT')
+    res.json({ deleted: true, assessmentsDeleted })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('Student delete failed:', err.message)
+    res.status(500).json({ error: 'Could not delete student' })
+  } finally {
+    client.release()
+  }
 })
 
 export default router
