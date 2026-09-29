@@ -8,6 +8,16 @@ import { buildScores } from '../utils/scoring.js'
 import { computeIntegrityFlags, FLAG_LABELS } from '../utils/integrity.js'
 
 const router = Router()
+
+// All schools are in Pakistan, so every timestamp shown to an admin --
+// whether on screen or in an export -- should read as Pakistan time,
+// regardless of what timezone the server (or the admin's own browser)
+// happens to default to. Without this, the same stored UTC timestamp
+// can render differently in different places, which is exactly what
+// caused the dashboard and the Excel export to disagree.
+function formatPKT(iso) {
+  return new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Karachi', dateStyle: 'medium', timeStyle: 'short' })
+}
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
 
 // ---------------------------------------------------------------------------
@@ -394,8 +404,8 @@ router.get('/admin/results/export', async (req, res) => {
     for (const q of questions) row[q.code] = r.answers[q.code] || ''
     for (const d of domains) row[`${d} Score (%)`] = r.domainScores[d] ?? ''
     row['Overall Score (%)'] = r.overallScore
-    row['Started At'] = r.startedAt ? new Date(r.startedAt).toLocaleString() : ''
-    row['Submitted At'] = r.completedAt ? new Date(r.completedAt).toLocaleString() : ''
+    row['Started At (PKT)'] = r.startedAt ? formatPKT(r.startedAt) : ''
+    row['Submitted At (PKT)'] = r.completedAt ? formatPKT(r.completedAt) : ''
     row['Duration (min)'] = (r.startedAt && r.completedAt)
       ? Math.round(((new Date(r.completedAt) - new Date(r.startedAt)) / 60000) * 10) / 10
       : ''
@@ -448,7 +458,7 @@ router.get('/admin/results/export', async (req, res) => {
       'School': r.schoolName,
       'Teacher': r.teacherName,
       'Student': `${r.firstName} ${r.lastName}`,
-      'Submitted At': r.completedAt ? new Date(r.completedAt).toLocaleString() : '',
+      'Submitted At (PKT)': r.completedAt ? formatPKT(r.completedAt) : '',
       'Reasons Flagged': r.flags.map(f => FLAG_LABELS[f] || f).join('; ')
     }))
 
