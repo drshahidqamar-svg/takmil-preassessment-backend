@@ -717,9 +717,19 @@ router.get('/admin/evaluations-export', async (req, res) => {
   // Distribution sheets: % of children at each level, per subject, grouped
   // by school / gender / age. The ASER way to read results is "what share
   // of children can read a story", not an average score.
+  // A child evaluated twice (e.g. mid-year and end of year) counts once
+  // in the distributions -- by their most recent sitting. Every sitting
+  // still appears on the "Student Levels" sheet.
+  const latestByStudent = new Map()
+  for (const r of results) {
+    const cur = latestByStudent.get(r.studentId)
+    if (!cur || new Date(r.completedAt || r.receivedAt) > new Date(cur.completedAt || cur.receivedAt)) latestByStudent.set(r.studentId, r)
+  }
+  const latest = [...latestByStudent.values()]
+
   function distributionRows(groupLabel, keyFn) {
     const groups = {}
-    for (const r of results) {
+    for (const r of latest) {
       const key = keyFn(r)
       groups[key] = groups[key] || []
       groups[key].push(r)
