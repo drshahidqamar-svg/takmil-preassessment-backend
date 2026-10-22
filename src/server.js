@@ -4,6 +4,7 @@ import 'dotenv/config'
 import authRoutes from './routes/auth.js'
 import syncRoutes from './routes/sync.js'
 import adminRoutes from './routes/admin.js'
+import evaluationRoutes from './routes/evaluations.js'
 
 const app = express()
 
@@ -14,6 +15,10 @@ app.get('/health', (req, res) => res.json({ ok: true }))
 
 app.use('/api', authRoutes)
 app.use('/api', syncRoutes)
+// Must be mounted BEFORE adminRoutes: the admin router applies an
+// admin-only guard to every request that reaches it, which would 403 the
+// teacher's evaluation sync.
+app.use('/api', evaluationRoutes)
 app.use('/api', adminRoutes)
 
 app.use((err, req, res, next) => {

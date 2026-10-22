@@ -6,6 +6,7 @@ import { verifyPassword, hashPassword, generateTempPassword } from '../utils/pas
 import { signToken, requireAuth, requireRole } from '../middleware/auth.js'
 import { buildScores } from '../utils/scoring.js'
 import { computeIntegrityFlags, FLAG_LABELS } from '../utils/integrity.js'
+import { scoreEvaluation, labelFor, contentFor, SUBJECT_KEYS } from '../aser/index.js'
 
 const router = Router()
 
@@ -298,7 +299,8 @@ router.get('/admin/sync-status', async (req, res) => {
       s.name AS "schoolName",
       COUNT(DISTINCT st.id) AS "studentCount",
       COUNT(DISTINCT a.uuid) AS "assessmentsReceived",
-      MAX(a.received_at) AS "lastSyncAt"
+      (SELECT COUNT(*) FROM evaluations e WHERE e.school_id = s.id) AS "evaluationsReceived",
+      GREATEST(MAX(a.received_at), (SELECT MAX(e.received_at) FROM evaluations e WHERE e.school_id = s.id)) AS "lastSyncAt"
     FROM schools s
     LEFT JOIN students st ON st.school_id = s.id
     LEFT JOIN assessments a ON a.school_id = s.id
@@ -486,7 +488,8 @@ router.get('/admin/students', async (req, res) => {
     SELECT
       st.id, st.first_name AS "firstName", st.last_name AS "lastName",
       st.age, st.gender, s.name AS "schoolName", s.id AS "schoolId",
-      COUNT(a.uuid) AS "assessmentCount"
+      COUNT(a.uuid) AS "assessmentCount",
+      (SELECT COUNT(*) FROM evaluations e WHERE e.student_id = st.id) AS "evaluationCount"
     FROM students st
     JOIN schools s ON s.id = st.school_id
     LEFT JOIN assessments a ON a.student_id = st.id
@@ -530,10 +533,12 @@ router.delete('/admin/schools/:id', async (req, res) => {
 
 router.delete('/admin/teachers/:id', async (req, res) => {
   const { id } = req.params
-  const { rows: [{ count }] } = await query('SELECT COUNT(*) FROM assessments WHERE teacher_id = $1', [id])
-  if (Number(count) > 0) {
+  const { rows: [{ count, evals }] } = await query(
+    `SELECT (SELECT COUNT(*) FROM assessments WHERE teacher_id = $1) AS count,
+            (SELECT COUNT(*) FROM evaluations WHERE teacher_id = $1) AS evals`, [id])
+  if (Number(count) > 0 || Number(evals) > 0) {
     return res.status(409).json({
-      error: `Cannot delete: this teacher has ${count} assessment(s) on record. That data must stay attached to an account.`
+      error: `Cannot delete: this teacher has ${count} assessment(s) and ${evals} evaluation(s) on record. That data must stay attached to an account.`
     })
   }
   const { rowCount } = await query('DELETE FROM users WHERE id = $1 AND role = $2', [id, 'teacher'])
@@ -552,13 +557,14 @@ router.delete('/admin/students/:id', async (req, res) => {
       [id]
     )
     const { rowCount: assessmentsDeleted } = await client.query('DELETE FROM assessments WHERE student_id = $1', [id])
+    const { rowCount: evaluationsDeleted } = await client.query('DELETE FROM evaluations WHERE student_id = $1', [id])
     const { rowCount: studentDeleted } = await client.query('DELETE FROM students WHERE id = $1', [id])
     if (studentDeleted === 0) {
       await client.query('ROLLBACK')
       return res.status(404).json({ error: 'Student not found' })
     }
     await client.query('COMMIT')
-    res.json({ deleted: true, assessmentsDeleted })
+    res.json({ deleted: true, assessmentsDeleted, evaluationsDeleted })
   } catch (err) {
     await client.query('ROLLBACK')
     console.error('Student delete failed:', err.message)
@@ -566,6 +572,195 @@ router.delete('/admin/students/:id', async (req, res) => {
   } finally {
     client.release()
   }
+})
+
+// ---------------------------------------------------------------------------
+// Evaluation Assessment (ASER 2018-style tool)
+//
+// Results are LEVELS, not percentages: each child's highest level passed
+// per subject. Levels are recomputed from the raw marks here too, so a
+// content fix (e.g. a corrected pass threshold) is reflected without
+// touching stored data.
+// ---------------------------------------------------------------------------
+const EVAL_TOO_FAST_SECONDS = 120
+
+async function fetchEvaluationRows() {
+  const { rows } = await query(`
+    SELECT
+      e.uuid, e.teacher_id, e.school_id, e.tool_version, e.sample_no, e.responses,
+      e.started_at, e.completed_at, e.received_at, e.latitude, e.longitude,
+      s.name AS school_name, s.province AS school_province,
+      u.name AS teacher_name,
+      st.id AS student_id, st.first_name, st.last_name, st.age, st.gender
+    FROM evaluations e
+    JOIN students st ON st.id = e.student_id
+    JOIN schools s ON s.id = e.school_id
+    JOIN users u ON u.id = e.teacher_id
+    ORDER BY s.name, st.last_name, st.first_name, e.completed_at
+  `)
+
+  const results = rows.map(r => {
+    const scores = scoreEvaluation(r.tool_version, r.sample_no, r.responses) || {}
+    const levels = {}
+    const levelLabels = {}
+    const complete = {}
+    for (const subject of SUBJECT_KEYS) {
+      levels[subject] = scores[subject]?.level ?? null
+      levelLabels[subject] = levels[subject] == null ? '' : labelFor(r.tool_version, subject, levels[subject])
+      complete[subject] = scores[subject]?.complete ?? false
+    }
+    return {
+      uuid: r.uuid,
+      teacherId: r.teacher_id,
+      schoolId: r.school_id,
+      studentId: r.student_id,
+      schoolName: r.school_name,
+      schoolProvince: r.school_province,
+      teacherName: r.teacher_name,
+      firstName: r.first_name,
+      lastName: r.last_name,
+      age: r.age,
+      gender: r.gender,
+      toolVersion: r.tool_version,
+      sampleNo: r.sample_no,
+      levels, levelLabels, complete,
+      startedAt: r.started_at,
+      completedAt: r.completed_at,
+      receivedAt: r.received_at,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      responses: r.responses
+    }
+  })
+
+  const { rows: schools } = await query('SELECT id, latitude, longitude FROM schools')
+  const flagsByUuid = computeIntegrityFlags(results, schools, {
+    tooFastSeconds: EVAL_TOO_FAST_SECONDS,
+    checkAnswerPatterns: false
+  })
+  return results.map(r => ({ ...r, flags: flagsByUuid.get(r.uuid) || [] }))
+}
+
+// Level definitions, so the dashboard never hard-codes level names.
+router.get('/admin/evaluations/levels', async (req, res) => {
+  const content = contentFor('aser2018-v1')
+  res.json(Object.fromEntries(Object.entries(content.subjects).map(([k, v]) => [k, { label: v.label, levels: v.levels }])))
+})
+
+router.get('/admin/evaluations', async (req, res) => {
+  const results = await fetchEvaluationRows()
+  res.json(results.map(({ responses, teacherId, ...rest }) => rest))
+})
+
+// Per-item detail for one sitting: which items were shown, and how the
+// child did on each -- the drill-down from a student row.
+router.get('/admin/evaluations/:uuid', async (req, res) => {
+  const { rows: [e] } = await query('SELECT tool_version, sample_no, responses FROM evaluations WHERE uuid = $1', [req.params.uuid])
+  if (!e) return res.status(404).json({ error: 'Evaluation not found' })
+  const content = contentFor(e.tool_version)
+  const sample = content?.samples[String(e.sample_no)]
+  const detail = {}
+  for (const subject of SUBJECT_KEYS) {
+    detail[subject] = (e.responses?.[subject]?.steps || []).map(step => {
+      const def = sample?.[subject]?.[step.level]
+      const items = def ? (def.variants ? def.variants[step.variant || 0] : def.items) : []
+      const correct = (step.marks || []).filter(m => m === 1).length
+      return {
+        level: step.level,
+        levelLabel: content?.subjects[subject].levels.find(l => l.key === step.level)?.label || step.level,
+        variant: step.variant || 0,
+        need: def?.need,
+        correct,
+        passed: def ? correct >= def.need : false,
+        items: items.map((item, i) => ({
+          text: typeof item === 'string' ? item : `${item.a} ${item.op === '-' ? '−' : item.op} ${item.b}`,
+          mark: step.marks?.[i] ?? null
+        }))
+      }
+    })
+  }
+  res.json({ sampleNo: e.sample_no, toolVersion: e.tool_version, dir: { english: 'ltr', urdu: 'rtl', math: 'ltr' }, detail })
+})
+
+router.get('/admin/evaluations-export', async (req, res) => {
+  const results = await fetchEvaluationRows()
+  const content = contentFor('aser2018-v1')
+  const subjectLabel = s => content.subjects[s].label
+
+  const detailRows = results.map(r => {
+    const row = {
+      'School': r.schoolName,
+      'Province': r.schoolProvince || '',
+      'Teacher': r.teacherName,
+      'First Name': r.firstName,
+      'Last Name': r.lastName,
+      'Age': r.age,
+      'Gender': r.gender,
+      'Sample': r.sampleNo
+    }
+    for (const s of SUBJECT_KEYS) {
+      row[`${subjectLabel(s)} Level`] = r.levelLabels[s]
+      row[`${subjectLabel(s)} Level (0-${s === 'math' ? 4 : 5})`] = r.levels[s]
+    }
+    row['All Subjects Finished'] = SUBJECT_KEYS.every(s => r.complete[s]) ? 'Yes' : 'No'
+    row['Started At (PKT)'] = r.startedAt ? formatPKT(r.startedAt) : ''
+    row['Submitted At (PKT)'] = r.completedAt ? formatPKT(r.completedAt) : ''
+    row['Duration (min)'] = (r.startedAt && r.completedAt)
+      ? Math.round(((new Date(r.completedAt) - new Date(r.startedAt)) / 60000) * 10) / 10
+      : ''
+    row['GPS Latitude'] = r.latitude ?? ''
+    row['GPS Longitude'] = r.longitude ?? ''
+    row['Review Flags'] = r.flags.map(f => FLAG_LABELS[f] || f).join('; ')
+    return row
+  })
+
+  // Distribution sheets: % of children at each level, per subject, grouped
+  // by school / gender / age. The ASER way to read results is "what share
+  // of children can read a story", not an average score.
+  function distributionRows(groupLabel, keyFn) {
+    const groups = {}
+    for (const r of results) {
+      const key = keyFn(r)
+      groups[key] = groups[key] || []
+      groups[key].push(r)
+    }
+    const out = []
+    for (const [key, list] of Object.entries(groups)) {
+      for (const s of SUBJECT_KEYS) {
+        const row = { [groupLabel]: key, 'Subject': subjectLabel(s), 'Children': list.length }
+        for (const lvl of content.subjects[s].levels) {
+          const n = list.filter(r => r.levels[s] === lvl.rank).length
+          row[`${lvl.label} (%)`] = Math.round((n / list.length) * 1000) / 10
+        }
+        out.push(row)
+      }
+    }
+    return out
+  }
+
+  const flaggedRows = results
+    .filter(r => r.flags.length > 0)
+    .map(r => ({
+      'School': r.schoolName,
+      'Teacher': r.teacherName,
+      'Student': `${r.firstName} ${r.lastName}`,
+      'Submitted At (PKT)': r.completedAt ? formatPKT(r.completedAt) : '',
+      'Reasons Flagged': r.flags.map(f => FLAG_LABELS[f] || f).join('; ')
+    }))
+
+  const genderName = g => (g === 'F' ? 'Girls' : g === 'M' ? 'Boys' : 'Unspecified')
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Student Levels')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(distributionRows('Province', r => r.schoolProvince || 'Unspecified')), 'By Province')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(distributionRows('School', r => r.schoolName)), 'By School')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(distributionRows('Gender', r => genderName(r.gender))), 'By Gender')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(distributionRows('Age', r => r.age ?? 'Unspecified')), 'By Age')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(flaggedRows), 'Flagged for Review')
+
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  res.setHeader('Content-Disposition', 'attachment; filename="takmil-evaluation-results.xlsx"')
+  res.send(buffer)
 })
 
 export default router

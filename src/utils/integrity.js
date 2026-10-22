@@ -21,17 +21,23 @@ function answerFingerprint(answers) {
   return Object.keys(answers).sort().map(k => `${k}:${answers[k]}`).join('|')
 }
 
-export function computeIntegrityFlags(assessments, schools) {
+// opts lets the Evaluation Assessment reuse the location/timing checks
+// without the answer-pattern ones: on a levelled reading test a strong
+// reader legitimately gets every item right, so "same answer everywhere"
+// and "identical to another child" are normal there, not worth checking.
+export function computeIntegrityFlags(assessments, schools, opts = {}) {
+  const tooFastSeconds = opts.tooFastSeconds ?? TOO_FAST_SECONDS
+  const checkAnswerPatterns = opts.checkAnswerPatterns ?? true
   const flags = new Map(assessments.map(a => [a.uuid, []]))
 
   for (const a of assessments) {
-    const answerValues = Object.values(a.answers)
-    if (answerValues.length > 1 && new Set(answerValues).size === 1) {
+    const answerValues = Object.values(a.answers || {})
+    if (checkAnswerPatterns && answerValues.length > 1 && new Set(answerValues).size === 1) {
       flags.get(a.uuid).push('straight_line')
     }
     if (a.startedAt && a.completedAt) {
       const seconds = (new Date(a.completedAt) - new Date(a.startedAt)) / 1000
-      if (seconds > 0 && seconds < TOO_FAST_SECONDS) {
+      if (seconds > 0 && seconds < tooFastSeconds) {
         flags.get(a.uuid).push('too_fast')
       }
     }
@@ -45,7 +51,7 @@ export function computeIntegrityFlags(assessments, schools) {
     byTeacher[a.teacherId] = byTeacher[a.teacherId] || []
     byTeacher[a.teacherId].push(a)
   }
-  for (const teacherAssessments of Object.values(byTeacher)) {
+  for (const teacherAssessments of (checkAnswerPatterns ? Object.values(byTeacher) : [])) {
     const byFingerprint = {}
     for (const a of teacherAssessments) {
       const fp = answerFingerprint(a.answers)
