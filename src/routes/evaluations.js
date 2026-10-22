@@ -45,6 +45,8 @@ router.post('/evaluations/sync', requireAuth, async (req, res) => {
         continue
       }
 
+      await client.query('SAVEPOINT one_record')
+      try {
       await client.query(
         `INSERT INTO evaluations
            (uuid, student_id, teacher_id, school_id, tool_version, sample_no,
@@ -59,7 +61,14 @@ router.post('/evaluations/sync', requireAuth, async (req, res) => {
           e.latitude ?? null, e.longitude ?? null, e.locationAccuracy ?? null
         ]
       )
+      await client.query('RELEASE SAVEPOINT one_record')
       accepted.push(e.uuid)
+      } catch (err) {
+        // Only this record is undone; the rest of the batch still saves.
+        await client.query('ROLLBACK TO SAVEPOINT one_record')
+        console.error(`Evaluation sync rejected ${e.uuid}:`, err.message)
+        rejected.push({ uuid: e.uuid, reason: 'This record could not be saved' })
+      }
     }
 
     await client.query('COMMIT')

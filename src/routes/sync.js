@@ -20,6 +20,18 @@ router.post('/sync', requireAuth, async (req, res) => {
     for (const a of assessments) {
       if (!a.uuid || !a.studentId || !a.teacherId || !a.schoolId) continue
 
+      // A phone can hold a saved assessment for a student an admin has
+      // since deleted. Turn that ONE record away (the phone then stops
+      // retrying it) instead of letting it fail the whole batch -- which
+      // used to leave every other assessment on that phone stuck forever.
+      const { rows: [onRoster] } = await client.query(
+        'SELECT 1 FROM students WHERE id = $1', [a.studentId]
+      )
+      if (!onRoster) {
+        rejected.push({ uuid: a.uuid, reason: 'This student is no longer on the roster' })
+        continue
+      }
+
       // THE LOCK: once a student has any assessment on record, no other
       // submission for that student is ever accepted -- checked here,
       // not just in the app UI, because two different teachers on two
@@ -40,6 +52,11 @@ router.post('/sync', requireAuth, async (req, res) => {
         continue
       }
 
+      // Savepoint per record: if anything else about this one record is
+      // invalid, only this record is undone and the rest of the batch
+      // still saves.
+      await client.query('SAVEPOINT one_record')
+      try {
       const result = await client.query(
         `INSERT INTO assessments
            (uuid, student_id, teacher_id, school_id, device_id, started_at, completed_at,
@@ -91,7 +108,13 @@ router.post('/sync', requireAuth, async (req, res) => {
         )
       }
 
+      await client.query('RELEASE SAVEPOINT one_record')
       accepted.push(a.uuid)
+      } catch (err) {
+        await client.query('ROLLBACK TO SAVEPOINT one_record')
+        console.error(`Sync rejected ${a.uuid}:`, err.message)
+        rejected.push({ uuid: a.uuid, reason: 'This record could not be saved' })
+      }
     }
 
     await client.query('COMMIT')
