@@ -1,7 +1,7 @@
 // ============================================================================
 // Evaluation (ASER 2018 tool): flow + scoring. Two flows are supported:
 // the original ASER adaptive one (content v1) and the fixed order with
-// Letter/Word gates (content v2, the one in use).
+// gates (content v2/v3; v3 is the one in use).
 //
 // The SAME file is copied into the teacher app (to drive the flow on the
 // device, offline) and the backend (to recompute every level from the raw
@@ -57,44 +57,61 @@ export function evaluateStep(levelDef, marks, variant = 0) {
 }
 
 // ---------------------------------------------------------------------------
-// FIXED-ORDER FLOW (content v2, from the Oct 2026 UAT change requests).
+// FIXED-ORDER FLOW (content v2+, from the Oct 2026 UAT change requests).
 // Content files with a `flow` block use this instead of the adaptive one:
 // sections always run in order from the easiest; a section listed in
 // `gates` that is not passed stops that subject; every other section is
 // shown regardless of its result. The teacher moves on with Next, so a
 // step here has no "undecided" state -- the marks are simply counted.
+//
+// From v3 each step may carry its own `sample` (1-4): every section's
+// sample is picked at random per child. Steps without one use the
+// evaluation's sampleNo (v2 and earlier).
 // ---------------------------------------------------------------------------
-export function nextStepFixed(subject, sampleContent, steps, flow) {
-  const order = flow[subject].order
+export function stepDef(content, subject, step, sampleNo) {
+  return content.samples[String(step.sample ?? sampleNo)]?.[subject]?.[step.level]
+}
+
+export function nextStepFixed(subject, content, sampleNo, steps) {
+  const { order, gates } = content.flow[subject]
   if (steps.length === 0) return { level: order[0], variant: 0 }
   const last = steps[steps.length - 1]
-  const def = sampleContent[subject][last.level]
-  const passed = evaluateStep(def, last.marks, last.variant).passed
-  if (!passed && flow[subject].gates.includes(last.level)) return null
+  const def = stepDef(content, subject, last, sampleNo)
+  const passed = def ? evaluateStep(def, last.marks, last.variant).passed : false
+  if (!passed && gates.includes(last.level)) return null
   // Paragraph has two versions: a child who misses the first gets the second.
-  if (!passed && def.variants && last.variant + 1 < def.variants.length) {
+  if (!passed && def?.variants && last.variant + 1 < def.variants.length) {
     return { level: last.level, variant: last.variant + 1 }
   }
-  const i = order.indexOf(last.level)
-  return i + 1 < order.length ? { level: order[i + 1], variant: 0 } : null
+  // Next = the section after the furthest one reached (sections no longer in
+  // the order, e.g. Sentence from an older version, are skipped over).
+  const furthest = Math.max(-1, ...steps.map(st => order.indexOf(st.level)))
+  return furthest + 1 < order.length ? { level: order[furthest + 1], variant: 0 } : null
 }
 
 // Why a subject ended early, if it did: the gate section that was not passed.
-export function stoppedAt(subject, sampleContent, steps, flow) {
-  if (!flow || !steps?.length) return null
+export function stoppedAt(subject, content, sampleNo, steps) {
+  if (!content.flow || !steps?.length) return null
   const last = steps[steps.length - 1]
-  if (!flow[subject].gates.includes(last.level)) return null
-  const def = sampleContent[subject][last.level]
+  if (!content.flow[subject].gates.includes(last.level)) return null
+  const def = stepDef(content, subject, last, sampleNo)
+  if (!def) return null
   const r = evaluateStep(def, last.marks, last.variant)
   return r.passed ? null : { level: last.level, correct: r.correct, total: stepItems(def, last.variant).length, need: def.need }
 }
 
+// One entry point for both flows.
+export function nextStepFor(subject, content, sampleNo, steps) {
+  return content.flow
+    ? nextStepFixed(subject, content, sampleNo, steps)
+    : nextStep(subject, content.samples[String(sampleNo)], steps)
+}
+
 // Given the steps taken so far, return the next step to show, or null when
 // the subject is finished.
+// ADAPTIVE flow (content v1 only).
 //   steps: [{ level, variant, marks }]
-//   flow:  content.flow when the content uses the fixed order (v2+)
-export function nextStep(subject, sampleContent, steps, flow) {
-  if (flow) return nextStepFixed(subject, sampleContent, steps, flow)
+export function nextStep(subject, sampleContent, steps) {
   const adaptive = flowFor(subject)
   if (steps.length === 0) return { level: adaptive.start, variant: 0 }
 
@@ -122,11 +139,10 @@ export function nextStep(subject, sampleContent, steps, flow) {
 
 // The child's level for a subject = highest-ranked level passed.
 export function levelFor(subject, content, sampleNo, steps) {
-  const sample = content.samples[String(sampleNo)]
   const ranks = Object.fromEntries(content.subjects[subject].levels.map(l => [l.key, l.rank]))
   let best = 0
   for (const s of steps || []) {
-    const def = sample?.[subject]?.[s.level]
+    const def = stepDef(content, subject, s, sampleNo)
     if (!def || !Array.isArray(s.marks)) continue
     if (evaluateStep(def, s.marks, s.variant || 0).passed) best = Math.max(best, ranks[s.level] ?? 0)
   }
@@ -142,5 +158,5 @@ export function levelLabel(content, subject, rank) {
 export function isSubjectComplete(subject, content, sampleNo, subjectResponses) {
   const steps = subjectResponses?.steps || []
   if (content.flow) return !!subjectResponses?.finished
-  return steps.length > 0 && nextStep(subject, content.samples[String(sampleNo)], steps) === null
+  return steps.length > 0 && nextStepFor(subject, content, sampleNo, steps) === null
 }

@@ -7,6 +7,7 @@ import { signToken, requireAuth, requireRole } from '../middleware/auth.js'
 import { buildScores } from '../utils/scoring.js'
 import { computeIntegrityFlags, FLAG_LABELS } from '../utils/integrity.js'
 import { scoreEvaluation, labelFor, contentFor, SUBJECT_KEYS, CURRENT_VERSION } from '../aser/index.js'
+import { stepDef } from '../aser/aserScoring.js'
 
 const router = Router()
 
@@ -658,17 +659,17 @@ router.get('/admin/evaluations/:uuid', async (req, res) => {
   const { rows: [e] } = await query('SELECT tool_version, sample_no, responses FROM evaluations WHERE uuid = $1', [req.params.uuid])
   if (!e) return res.status(404).json({ error: 'Evaluation not found' })
   const content = contentFor(e.tool_version)
-  const sample = content?.samples[String(e.sample_no)]
   const detail = {}
   for (const subject of SUBJECT_KEYS) {
     detail[subject] = (e.responses?.[subject]?.steps || []).map(step => {
-      const def = sample?.[subject]?.[step.level]
+      const def = content ? stepDef(content, subject, step, e.sample_no) : null
       const items = def ? (def.variants ? def.variants[step.variant || 0] : def.items) : []
       const correct = (step.marks || []).filter(m => m === 1).length
       return {
         level: step.level,
         levelLabel: content?.subjects[subject].levels.find(l => l.key === step.level)?.label || step.level,
         variant: step.variant || 0,
+        sample: step.sample ?? e.sample_no,
         need: def?.need,
         correct,
         passed: def ? correct >= def.need : false,
@@ -688,14 +689,25 @@ router.get('/admin/evaluations-export', async (req, res) => {
   const subjectLabel = s => content.subjects[s].label
   function sectionResult(r, subject, levelKey) {
     const recContent = contentFor(r.toolVersion)
-    const def = recContent?.samples[String(r.sampleNo)]?.[subject]?.[levelKey]
     const tries = (r.responses?.[subject]?.steps || []).filter(st => st.level === levelKey)
-    if (!def || tries.length === 0) return 'Not attempted'
+    if (!recContent || tries.length === 0) return 'Not attempted'
     // Paragraph may have been tried twice; report the better attempt.
+    // From v3 each section has its own sample, shown as (S1)-(S4).
     const best = tries
-      .map(st => ({ correct: (st.marks || []).filter(m => m === 1).length, total: (def.variants ? def.variants[st.variant || 0] : def.items).length }))
+      .map(st => {
+        const def = stepDef(recContent, subject, st, r.sampleNo)
+        if (!def) return null
+        return {
+          correct: (st.marks || []).filter(m => m === 1).length,
+          total: (def.variants ? def.variants[st.variant || 0] : def.items).length,
+          need: def.need,
+          sample: st.sample ?? r.sampleNo
+        }
+      })
+      .filter(Boolean)
       .sort((a, b) => b.correct - a.correct)[0]
-    return `${best.correct}/${best.total} ${best.correct >= def.need ? 'Passed' : 'Not passed'}`
+    if (!best) return 'Not attempted'
+    return `${best.correct}/${best.total} ${best.correct >= best.need ? 'Passed' : 'Not passed'} (S${best.sample})`
   }
 
   const detailRows = results.map(r => {
