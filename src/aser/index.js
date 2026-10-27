@@ -14,6 +14,10 @@ for (const file of fs.readdirSync(__dirname).filter(f => /^aser.*\.json$/.test(f
   CONTENT_BY_VERSION[content.version] = content
 }
 
+// The version new evaluations are created with (the teacher app ships the
+// same file). Older versions stay loaded so old records still score.
+export const CURRENT_VERSION = 'aser2018-v2'
+
 export function contentFor(version) {
   return CONTENT_BY_VERSION[version] || null
 }
@@ -27,7 +31,7 @@ export function scoreEvaluation(version, sampleNo, responses) {
     const steps = responses?.[subject]?.steps || []
     out[subject] = {
       level: levelFor(subject, content, sampleNo, steps),
-      complete: isSubjectComplete(subject, content, sampleNo, steps),
+      complete: isSubjectComplete(subject, content, sampleNo, responses?.[subject]),
       stepsTaken: steps.length
     }
   }

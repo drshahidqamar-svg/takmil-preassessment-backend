@@ -6,7 +6,7 @@ import { verifyPassword, hashPassword, generateTempPassword } from '../utils/pas
 import { signToken, requireAuth, requireRole } from '../middleware/auth.js'
 import { buildScores } from '../utils/scoring.js'
 import { computeIntegrityFlags, FLAG_LABELS } from '../utils/integrity.js'
-import { scoreEvaluation, labelFor, contentFor, SUBJECT_KEYS } from '../aser/index.js'
+import { scoreEvaluation, labelFor, contentFor, SUBJECT_KEYS, CURRENT_VERSION } from '../aser/index.js'
 
 const router = Router()
 
@@ -643,7 +643,7 @@ async function fetchEvaluationRows() {
 
 // Level definitions, so the dashboard never hard-codes level names.
 router.get('/admin/evaluations/levels', async (req, res) => {
-  const content = contentFor('aser2018-v1')
+  const content = contentFor(CURRENT_VERSION)
   res.json(Object.fromEntries(Object.entries(content.subjects).map(([k, v]) => [k, { label: v.label, levels: v.levels }])))
 })
 
@@ -684,8 +684,19 @@ router.get('/admin/evaluations/:uuid', async (req, res) => {
 
 router.get('/admin/evaluations-export', async (req, res) => {
   const results = await fetchEvaluationRows()
-  const content = contentFor('aser2018-v1')
+  const content = contentFor(CURRENT_VERSION)
   const subjectLabel = s => content.subjects[s].label
+  function sectionResult(r, subject, levelKey) {
+    const recContent = contentFor(r.toolVersion)
+    const def = recContent?.samples[String(r.sampleNo)]?.[subject]?.[levelKey]
+    const tries = (r.responses?.[subject]?.steps || []).filter(st => st.level === levelKey)
+    if (!def || tries.length === 0) return 'Not attempted'
+    // Paragraph may have been tried twice; report the better attempt.
+    const best = tries
+      .map(st => ({ correct: (st.marks || []).filter(m => m === 1).length, total: (def.variants ? def.variants[st.variant || 0] : def.items).length }))
+      .sort((a, b) => b.correct - a.correct)[0]
+    return `${best.correct}/${best.total} ${best.correct >= def.need ? 'Passed' : 'Not passed'}`
+  }
 
   const detailRows = results.map(r => {
     const row = {
@@ -703,6 +714,13 @@ router.get('/admin/evaluations-export', async (req, res) => {
       row[`${subjectLabel(s)} Level (0-${s === 'math' ? 4 : 5})`] = r.levels[s]
     }
     row['All Subjects Finished'] = SUBJECT_KEYS.every(s => r.complete[s]) ? 'Yes' : 'No'
+    // One column per section: "13/15 Passed", "7/15 Not passed" or
+    // "Not attempted" (the subject stopped before it, or it was never shown).
+    for (const s of SUBJECT_KEYS) {
+      for (const lvl of content.subjects[s].levels.filter(l => l.rank > 0)) {
+        row[`${subjectLabel(s)}: ${lvl.label}`] = sectionResult(r, s, lvl.key)
+      }
+    }
     row['Started At (PKT)'] = r.startedAt ? formatPKT(r.startedAt) : ''
     row['Submitted At (PKT)'] = r.completedAt ? formatPKT(r.completedAt) : ''
     row['Duration (min)'] = (r.startedAt && r.completedAt)
