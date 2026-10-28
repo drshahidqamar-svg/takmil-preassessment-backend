@@ -5,6 +5,7 @@ import authRoutes from './routes/auth.js'
 import syncRoutes from './routes/sync.js'
 import adminRoutes from './routes/admin.js'
 import evaluationRoutes from './routes/evaluations.js'
+import paperRoutes from './routes/papers.js'
 
 const app = express()
 
@@ -19,6 +20,9 @@ app.use('/api', syncRoutes)
 // admin-only guard to every request that reaches it, which would 403 the
 // teacher's evaluation sync.
 app.use('/api', evaluationRoutes)
+// Curriculum assessments: admin paper routes guard themselves, so this
+// must also come before adminRoutes.
+app.use('/api', paperRoutes)
 app.use('/api', adminRoutes)
 
 app.use((err, req, res, next) => {

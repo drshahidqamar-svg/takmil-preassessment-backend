@@ -536,7 +536,8 @@ router.delete('/admin/teachers/:id', async (req, res) => {
   const { id } = req.params
   const { rows: [{ count, evals }] } = await query(
     `SELECT (SELECT COUNT(*) FROM assessments WHERE teacher_id = $1) AS count,
-            (SELECT COUNT(*) FROM evaluations WHERE teacher_id = $1) AS evals`, [id])
+            (SELECT COUNT(*) FROM evaluations WHERE teacher_id = $1) +
+            (SELECT COUNT(*) FROM assessment_attempts WHERE teacher_id = $1) AS evals`, [id])
   if (Number(count) > 0 || Number(evals) > 0) {
     return res.status(409).json({
       error: `Cannot delete: this teacher has ${count} assessment(s) and ${evals} evaluation(s) on record. That data must stay attached to an account.`
@@ -559,6 +560,7 @@ router.delete('/admin/students/:id', async (req, res) => {
     )
     const { rowCount: assessmentsDeleted } = await client.query('DELETE FROM assessments WHERE student_id = $1', [id])
     const { rowCount: evaluationsDeleted } = await client.query('DELETE FROM evaluations WHERE student_id = $1', [id])
+    await client.query('DELETE FROM assessment_attempts WHERE student_id = $1', [id])
     const { rowCount: studentDeleted } = await client.query('DELETE FROM students WHERE id = $1', [id])
     if (studentDeleted === 0) {
       await client.query('ROLLBACK')
