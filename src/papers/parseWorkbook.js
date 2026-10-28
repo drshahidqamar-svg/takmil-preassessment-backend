@@ -110,7 +110,9 @@ function itemsFromSheet(kind, sheetName, rows) {
       }
     }
 
-    if (PICTURE_WORDS.test(prompt || '')) {
+    // A match question whose Column A is pictures already has its pictures;
+    // "تصویر" in its wording refers to those, not to one more picture.
+    if (PICTURE_WORDS.test(prompt || '') && !base.needsPairImages) {
       base.needsImage = true
       issue('needs_picture', 'The question refers to a picture — add it')
     }
@@ -163,7 +165,7 @@ export function blockingIssues(item) {
   return (item.issues || []).filter(i => {
     if (!i.blocking) return false
     // A picture problem is solved once the picture(s) are attached.
-    if (i.code === 'needs_picture') return !item.image
+    if (i.code === 'needs_picture') return !item.image && !(item.pairs?.length && item.pairs.every(p => p.leftImage))
     if (i.code === 'needs_pictures') return (item.pairs || []).some(p => !p.left && !p.leftImage)
     return true
   })
