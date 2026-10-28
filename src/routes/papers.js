@@ -13,7 +13,20 @@ import { scoreAttempt } from '../papers/paperScoring.js'
 // ============================================================================
 
 const router = Router()
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
+// The source workbooks carry the paper's pictures embedded, so they run
+// large (Science L12 is 19 MB). The pictures themselves are attached
+// separately on the Papers page; only the cell text is read here.
+const MAX_UPLOAD_MB = 40
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 } })
+function uploadFile(req, res, next) {
+  upload.single('file')(req, res, err => {
+    if (!err) return next()
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: `The file is larger than ${MAX_UPLOAD_MB} MB. Save a copy without the pictures (they are attached on this page) and upload that.` })
+    }
+    return res.status(400).json({ error: `Could not receive the file: ${err.message}` })
+  })
+}
 const admin = [requireAuth, requireRole('admin')]
 const MAX_IMAGE_CHARS = 600 * 1024 // a data URL; the dashboard shrinks pictures before sending
 
@@ -42,7 +55,7 @@ function forTablet(items) {
 
 /* ------------------------------ Admin: papers ------------------------------ */
 
-router.post('/admin/papers/upload', ...admin, upload.single('file'), async (req, res) => {
+router.post('/admin/papers/upload', ...admin, uploadFile, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded (expected field name "file")' })
   let sheets
   try {
