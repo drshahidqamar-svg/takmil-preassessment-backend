@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { SUBJECT_KEYS, levelFor, isSubjectComplete, levelLabel } from './aserScoring.js'
+import { SUBJECT_KEYS, levelFor, isSubjectComplete, levelLabel, stepDef, stepItems } from './aserScoring.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -41,6 +41,56 @@ export function scoreEvaluation(version, sampleNo, responses) {
 export function labelFor(version, subject, rank) {
   const content = contentFor(version)
   return content ? levelLabel(content, subject, rank) : String(rank)
+}
+
+// Subject marks (UAT US-11): 1 mark per item marked correct. The subject
+// total is the number of items in every section of the subject -- also
+// the sections the child never reached (stopped at a gate), which score 0.
+// - A section tried more than once (the second paragraph) counts once, by
+//   its best try, so marks can never exceed the total.
+// - From v3 each section has its own sample; an attempted section is
+//   counted with the sample it used, an unreached one with the
+//   evaluation's sample (only story length differs between samples).
+// - Sections are those of the version's fixed flow (v2+); the adaptive v1
+//   counts every section of the booklet.
+export function subjectMarks(version, sampleNo, responses) {
+  const content = contentFor(version)
+  if (!content) return null
+  const out = {}
+  for (const subject of SUBJECT_KEYS) {
+    const order = content.flow?.[subject]?.order
+      || content.subjects[subject].levels.filter(l => l.rank > 0).map(l => l.key)
+    const steps = responses?.[subject]?.steps || []
+    let marks = 0
+    let total = 0
+    for (const key of order) {
+      const tries = steps
+        .filter(st => st.level === key)
+        .map(st => {
+          const def = stepDef(content, subject, st, sampleNo)
+          return def ? { correct: (st.marks || []).filter(m => m === 1).length, total: stepItems(def, st.variant || 0).length } : null
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.correct - a.correct)
+      if (tries.length) {
+        marks += tries[0].correct
+        total += tries[0].total
+      } else {
+        const def = content.samples[String(sampleNo)]?.[subject]?.[key]
+        total += def ? stepItems(def, 0).length : 0
+      }
+    }
+    out[subject] = { marks, total, percent: total ? Math.round((marks / total) * 10000) / 100 : null }
+  }
+  return out
+}
+
+// Samples a sitting actually used (one per section from v3), for display.
+export function samplesUsed(sampleNo, responses) {
+  const set = new Set()
+  for (const subject of SUBJECT_KEYS) for (const st of responses?.[subject]?.steps || []) set.add(Number(st.sample ?? sampleNo))
+  if (set.size === 0 && sampleNo != null) set.add(Number(sampleNo))
+  return [...set].sort((a, b) => a - b)
 }
 
 export { SUBJECT_KEYS }

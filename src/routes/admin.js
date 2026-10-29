@@ -6,7 +6,7 @@ import { verifyPassword, hashPassword, generateTempPassword } from '../utils/pas
 import { signToken, requireAuth, requireRole } from '../middleware/auth.js'
 import { buildScores } from '../utils/scoring.js'
 import { computeIntegrityFlags, FLAG_LABELS } from '../utils/integrity.js'
-import { scoreEvaluation, labelFor, contentFor, SUBJECT_KEYS, CURRENT_VERSION } from '../aser/index.js'
+import { scoreEvaluation, labelFor, contentFor, SUBJECT_KEYS, CURRENT_VERSION, subjectMarks, samplesUsed } from '../aser/index.js'
 import { stepDef } from '../aser/aserScoring.js'
 
 const router = Router()
@@ -627,6 +627,9 @@ async function fetchEvaluationRows() {
       toolVersion: r.tool_version,
       sampleNo: r.sample_no,
       levels, levelLabels, complete,
+      // Subject marks: { english: { marks, total, percent }, ... } (US-11)
+      marks: subjectMarks(r.tool_version, r.sample_no, r.responses) || {},
+      samples: samplesUsed(r.sample_no, r.responses),
       startedAt: r.started_at,
       completedAt: r.completed_at,
       receivedAt: r.received_at,
@@ -790,8 +793,41 @@ router.get('/admin/evaluations-export', async (req, res) => {
       'Reasons Flagged': r.flags.map(f => FLAG_LABELS[f] || f).join('; ')
     }))
 
+  // Student Results (US-11): one row per child (most recent sitting),
+  // marks / total / % for each subject, 1 mark per item marked correct.
+  const studentResultRows = [...latest]
+    .sort((a, b) => a.schoolName.localeCompare(b.schoolName) || `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`))
+    .map(r => {
+      const row = {
+        'Student': `${r.firstName} ${r.lastName}`,
+        'School': r.schoolName,
+        'Province': r.schoolProvince || '',
+        'Sample': r.samples.join(', ')
+      }
+      for (const s of SUBJECT_KEYS) {
+        const m = r.marks[s]
+        row[`${subjectLabel(s)} Marks`] = m ? m.marks : ''
+        row[`${subjectLabel(s)} Total`] = m ? m.total : ''
+        row[`${subjectLabel(s)} %`] = m && m.percent != null ? Number(m.percent.toFixed(2)) : ''
+      }
+      row['Submitted At (PKT)'] = r.completedAt ? formatPKT(r.completedAt) : ''
+      return row
+    })
+
   const genderName = g => (g === 'F' ? 'Girls' : g === 'M' ? 'Boys' : 'Unspecified')
   const workbook = XLSX.utils.book_new()
+  const resultsSheet = XLSX.utils.json_to_sheet(studentResultRows)
+  // Show percentages with exactly 2 decimals in Excel.
+  const range = XLSX.utils.decode_range(resultsSheet['!ref'] || 'A1')
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const head = resultsSheet[XLSX.utils.encode_cell({ r: 0, c })]
+    if (!head || !String(head.v).endsWith(' %')) continue
+    for (let r = 1; r <= range.e.r; r++) {
+      const cell = resultsSheet[XLSX.utils.encode_cell({ r, c })]
+      if (cell && typeof cell.v === 'number') cell.z = '0.00'
+    }
+  }
+  XLSX.utils.book_append_sheet(workbook, resultsSheet, 'Student Results')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Student Levels')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(distributionRows('Province', r => r.schoolProvince || 'Unspecified')), 'By Province')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(distributionRows('School', r => r.schoolName)), 'By School')
