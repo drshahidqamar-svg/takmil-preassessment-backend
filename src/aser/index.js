@@ -16,7 +16,7 @@ for (const file of fs.readdirSync(__dirname).filter(f => /^aser.*\.json$/.test(f
 
 // The version new evaluations are created with (the teacher app ships the
 // same file). Older versions stay loaded so old records still score.
-export const CURRENT_VERSION = 'aser2018-v3'
+export const CURRENT_VERSION = 'aser2018-v4'
 
 export function contentFor(version) {
   return CONTENT_BY_VERSION[version] || null

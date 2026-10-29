@@ -1,0 +1,1187 @@
+{
+ "version": "aser2018-v4",
+ "title": "Evaluation Assessment (ASER 2018 tool, fixed order, v4)",
+ "notes": [
+  "Transcribed from 'ASER 2018 Testing Tool (editable, updated)'. Urdu words containing لا were corrected by hand because PDF text extraction scrambles that ligature (e.g. نیلا, بلال, گلاب, کلاس, تالاب, لائبریری).",
+  "Corrections to printing errors in the booklet (decided Oct 22, 2026): Sample 1 number recognition 6 and 7 (outside the stated 51-99 range) replaced with 66 and 77; Sample 1 first subtraction item printed as '82 + 64' changed to 82 - 64 (a borrowing problem like the rest); Sample 4 number recognition pass mark printed as 'at least 4' set to 8 to match Samples 1-3.",
+  "Bonus Tool is listed in the booklet contents but has no content; not included.",
+  "v2 (Oct 26, 2026, UAT change requests): sections always run in a fixed order from the easiest; Letter and Word are gates in English and Urdu (not passed = that language stops); Math has no gate; no 'any N' attempt limits -- every item is marked and counted against the pass mark.",
+  "v1 records (adaptive ASER flow) stay scored against aser2018.json in the backend.",
+  "v3 (Oct 27, 2026, 2nd UAT feedback): Sentence section dropped from the flow (reading = Letter, Word, Paragraph, Story); Number Recognition and Place Value are gates in Math; each section's sample (1-4) is chosen at random per child, so a child can get e.g. Sample 3 letters and Sample 1 story. Each step records its own sample number.",
+  "Level ranks are unchanged from v1/v2 (Paragraph = 4, Story = 5) so results across versions stay comparable; Sentence (3) is simply not used in v3.",
+  "v4 (Oct 29, 2026, UAT US-8): the third Math section is 'Subtraction and Addition': 3 addition + 3 subtraction questions, pass mark 4 of 6, replacing the booklet's 8 subtraction questions (pass 5). Sample 1 is the team's printed tool (82+64, 51+28, 37+12, 68-28, 77-53, 97-26). Samples 2-4 were written to the same pattern at Shahid's request: first addition crosses 100, other additions need no carrying, subtractions need no borrowing. Section key stays 'sub' (rank 3); v3 records stay scored against aser2018-v3.json."
+ ],
+ "subjects": {
+  "english": {
+   "label": "English Reading",
+   "dir": "ltr",
+   "levels": [
+    {
+     "key": "beginner",
+     "label": "Beginner",
+     "rank": 0
+    },
+    {
+     "key": "letter",
+     "label": "Letter",
+     "rank": 1
+    },
+    {
+     "key": "word",
+     "label": "Word",
+     "rank": 2
+    },
+    {
+     "key": "para",
+     "label": "Paragraph",
+     "rank": 4
+    },
+    {
+     "key": "story",
+     "label": "Story",
+     "rank": 5
+    }
+   ]
+  },
+  "urdu": {
+   "label": "Urdu Reading",
+   "dir": "rtl",
+   "levels": [
+    {
+     "key": "beginner",
+     "label": "Beginner",
+     "labelUr": "ابتدائی",
+     "rank": 0
+    },
+    {
+     "key": "letter",
+     "label": "Letter",
+     "labelUr": "حروف",
+     "rank": 1
+    },
+    {
+     "key": "word",
+     "label": "Word",
+     "labelUr": "الفاظ",
+     "rank": 2
+    },
+    {
+     "key": "para",
+     "label": "Paragraph",
+     "labelUr": "پیرا",
+     "rank": 4
+    },
+    {
+     "key": "story",
+     "label": "Story",
+     "labelUr": "کہانی",
+     "rank": 5
+    }
+   ]
+  },
+  "math": {
+   "label": "Math",
+   "dir": "ltr",
+   "levels": [
+    {
+     "key": "beginner",
+     "label": "Beginner",
+     "rank": 0
+    },
+    {
+     "key": "num2",
+     "label": "Number Recognition",
+     "rank": 1
+    },
+    {
+     "key": "num3",
+     "label": "Place Value",
+     "rank": 2
+    },
+    {
+     "key": "sub",
+     "label": "Subtraction and Addition",
+     "rank": 3
+    },
+    {
+     "key": "mul",
+     "label": "Multiplication",
+     "rank": 4
+    }
+   ]
+  }
+ },
+ "samples": {
+  "1": {
+   "english": {
+    "letter": {
+     "need": 12,
+     "items": [
+      "c",
+      "j",
+      "x",
+      "n",
+      "p",
+      "u",
+      "s",
+      "o",
+      "k",
+      "h",
+      "a",
+      "m",
+      "t",
+      "g",
+      "w"
+     ]
+    },
+    "word": {
+     "need": 12,
+     "items": [
+      "run",
+      "book",
+      "cat",
+      "tall",
+      "fan",
+      "jump",
+      "cup",
+      "rope",
+      "bag",
+      "nice",
+      "sun",
+      "pen",
+      "dog",
+      "milk",
+      "bird"
+     ]
+    },
+    "sentence": {
+     "need": 4,
+     "items": [
+      "The sun is hot.",
+      "My mother cooks food.",
+      "We go to school by bus.",
+      "The cat sat on the mat.",
+      "Raju has a red ball."
+     ]
+    },
+    "para": {
+     "need": 3,
+     "variants": [
+      [
+       "Amna is a tall girl.",
+       "She loves to drink milk.",
+       "Amna likes to run fast.",
+       "She runs to school every day."
+      ],
+      [
+       "Aamir has a big dog.",
+       "The dog is called Usman.",
+       "They play every day.",
+       "They like to play outside."
+      ]
+     ]
+    },
+    "story": {
+     "need": 7,
+     "items": [
+      "Ahmed lived in a small village.",
+      "He lived with his mother.",
+      "His brother Ali lived in a city.",
+      "Ahmed was happy when Ali came home.",
+      "They played games and had fun.",
+      "Their mother made them lots of food.",
+      "Ahmed was sad when Ali left.",
+      "He told Ali to come back soon.",
+      "His mother was sad too."
+     ]
+    }
+   },
+   "urdu": {
+    "letter": {
+     "need": 12,
+     "items": [
+      "پ",
+      "چ",
+      "گ",
+      "ر",
+      "س",
+      "ی",
+      "ب",
+      "م",
+      "ٹھ",
+      "ل",
+      "ج",
+      "ڈ",
+      "ز",
+      "ھ",
+      "و"
+     ]
+    },
+    "word": {
+     "need": 12,
+     "items": [
+      "انار",
+      "تھالی",
+      "کتاب",
+      "میلا",
+      "نان",
+      "چوٹ",
+      "بھینس",
+      "سورج",
+      "استاد",
+      "اشارہ",
+      "قسم",
+      "مٹھائی",
+      "اعظم",
+      "بیمار",
+      "حادثے"
+     ]
+    },
+    "sentence": {
+     "need": 4,
+     "items": [
+      "میرے ابو بازار گئے۔",
+      "ہم روز اسکول جاتے ہیں۔",
+      "آسمان نیلا ہے۔",
+      "بچے باغ میں کھیل رہے ہیں۔",
+      "امی نے روٹی پکائی۔"
+     ]
+    },
+    "para": {
+     "need": 3,
+     "variants": [
+      [
+       "سارہ ایک اچھی لڑکی ہے۔",
+       "اسے دودھ پینا پسند ہے۔",
+       "وہ روز صبح دوڑ لگاتی ہے۔",
+       "وہ دوڑ کر اسکول جاتی ہے۔"
+      ],
+      [
+       "عامر کے پاس ایک بڑا کتا ہے۔",
+       "کتے کا نام شیرو ہے۔",
+       "وہ روز ساتھ کھیلتے ہیں۔",
+       "انہیں باہر کھیلنا پسند ہے۔"
+      ]
+     ]
+    },
+    "story": {
+     "need": 6,
+     "items": [
+      "احمد ایک چھوٹے گاؤں میں رہتا تھا۔",
+      "وہ اپنی امی کے ساتھ رہتا تھا۔",
+      "اس کا بھائی بلال شہر میں رہتا تھا۔",
+      "بلال گھر آتا تو احمد خوش ہوتا۔",
+      "وہ دونوں مل کر کھیلتے تھے۔",
+      "امی ان کے لیے مزے دار کھانا بناتی تھیں۔",
+      "بلال جاتا تو احمد اداس ہو جاتا۔",
+      "وہ کہتا کہ جلدی واپس آنا۔"
+     ]
+    }
+   },
+   "math": {
+    "num2": {
+     "need": 8,
+     "items": [
+      "66",
+      "72",
+      "91",
+      "63",
+      "58",
+      "84",
+      "77",
+      "95",
+      "69",
+      "53"
+     ]
+    },
+    "num3": {
+     "need": 8,
+     "items": [
+      "247",
+      "615",
+      "538",
+      "904",
+      "372",
+      "861",
+      "459",
+      "726",
+      "183",
+      "590"
+     ]
+    },
+    "sub": {
+     "need": 4,
+     "items": [
+      {
+       "a": 82,
+       "b": 64,
+       "op": "+"
+      },
+      {
+       "a": 51,
+       "b": 28,
+       "op": "+"
+      },
+      {
+       "a": 37,
+       "b": 12,
+       "op": "+"
+      },
+      {
+       "a": 68,
+       "b": 28,
+       "op": "-"
+      },
+      {
+       "a": 77,
+       "b": 53,
+       "op": "-"
+      },
+      {
+       "a": 97,
+       "b": 26,
+       "op": "-"
+      }
+     ]
+    },
+    "mul": {
+     "need": 2,
+     "items": [
+      {
+       "a": 34,
+       "b": 6,
+       "op": "×"
+      },
+      {
+       "a": 27,
+       "b": 3,
+       "op": "×"
+      },
+      {
+       "a": 45,
+       "b": 2,
+       "op": "×"
+      },
+      {
+       "a": 18,
+       "b": 5,
+       "op": "×"
+      }
+     ]
+    }
+   }
+  },
+  "2": {
+   "english": {
+    "letter": {
+     "need": 12,
+     "items": [
+      "r",
+      "f",
+      "b",
+      "y",
+      "z",
+      "e",
+      "q",
+      "v",
+      "d",
+      "i",
+      "l",
+      "a",
+      "n",
+      "t",
+      "h"
+     ]
+    },
+    "word": {
+     "need": 12,
+     "items": [
+      "ball",
+      "hat",
+      "nose",
+      "day",
+      "sing",
+      "wish",
+      "red",
+      "face",
+      "hot",
+      "leg",
+      "tree",
+      "ant",
+      "bed",
+      "fish",
+      "farm"
+     ]
+    },
+    "sentence": {
+     "need": 4,
+     "items": [
+      "The bird sits on the tree.",
+      "Mother gave me a red apple.",
+      "We play near the river.",
+      "My sister reads a book.",
+      "It is a sunny day."
+     ]
+    },
+    "para": {
+     "need": 3,
+     "variants": [
+      [
+       "Bilal has a new ball.",
+       "His father gave him the ball.",
+       "Bilal plays with it every day.",
+       "He loves his new ball."
+      ],
+      [
+       "Ayesha likes to read.",
+       "Her school has many books.",
+       "Ayesha also has books at home.",
+       "She likes to read every day."
+      ]
+     ]
+    },
+    "story": {
+     "need": 6,
+     "items": [
+      "On Monday, Alia was very happy.",
+      "She went to school for the first time.",
+      "She had a new school bag for her books.",
+      "She put a red flower on the bag.",
+      "Alia went to school with her sister.",
+      "Their mother also went with them.",
+      "The school was not far from their house.",
+      "Alia made many new friends in school."
+     ]
+    }
+   },
+   "urdu": {
+    "letter": {
+     "need": 12,
+     "items": [
+      "ا",
+      "ت",
+      "ک",
+      "ف",
+      "ن",
+      "ہ",
+      "د",
+      "ش",
+      "خ",
+      "ع",
+      "ق",
+      "ط",
+      "ص",
+      "ذ",
+      "ث"
+     ]
+    },
+    "word": {
+     "need": 12,
+     "items": [
+      "آم",
+      "گھر",
+      "پانی",
+      "روٹی",
+      "چاند",
+      "درخت",
+      "کھیل",
+      "بستہ",
+      "دوست",
+      "پھول",
+      "ماں",
+      "باغ",
+      "چڑیا",
+      "سبزی",
+      "اسکول"
+     ]
+    },
+    "sentence": {
+     "need": 4,
+     "items": [
+      "پرندہ درخت پر بیٹھا ہے۔",
+      "ہمیں صاف پانی پینا چاہیے۔",
+      "علی کتاب پڑھ رہا ہے۔",
+      "میری بہن کو پھول پسند ہیں۔",
+      "آج موسم بہت اچھا ہے۔"
+     ]
+    },
+    "para": {
+     "need": 3,
+     "variants": [
+      [
+       "ندا کے گھر میں ایک چھوٹا سا باغ ہے۔",
+       "اس میں گلاب اور موتیا کے پھول لگے ہیں۔",
+       "ندا روز صبح پودوں کو پانی دیتی ہے۔",
+       "اسے خوشبو والے پھول بہت پسند ہیں۔"
+      ],
+      [
+       "ہمارے اسکول میں کل کھیلوں کا دن ہے۔",
+       "سب بچے سفید کپڑے پہن کر آئیں گے۔",
+       "ہم دوڑ اور رسی کھینچنے میں حصہ لیں گے۔",
+       "جیتنے والوں کو انعام دیا جائے گا۔"
+      ]
+     ]
+    },
+    "story": {
+     "need": 6,
+     "items": [
+      "گاؤں کے کنارے ایک چھوٹی سی نہر بہتی تھی۔",
+      "ہر صبح کسان اپنے کھیت میں کام کرنے جاتا تھا۔",
+      "اس کا بیٹا فیصل بھی اس کے ساتھ جاتا۔",
+      "وہ کھیت میں پانی دینے میں مدد کرتا تھا۔",
+      "دوپہر کو دونوں درخت کے سائے میں بیٹھ کر کھانا کھاتے۔",
+      "شام کو وہ تھک کر گھر لوٹتے۔",
+      "فیصل کو اپنے ابو کے ساتھ کام کرنا اچھا لگتا تھا۔"
+     ]
+    }
+   },
+   "math": {
+    "num2": {
+     "need": 8,
+     "items": [
+      "62",
+      "85",
+      "97",
+      "54",
+      "73",
+      "66",
+      "59",
+      "88",
+      "81",
+      "75"
+     ]
+    },
+    "num3": {
+     "need": 8,
+     "items": [
+      "318",
+      "742",
+      "605",
+      "129",
+      "836",
+      "274",
+      "491",
+      "953",
+      "760",
+      "382"
+     ]
+    },
+    "sub": {
+     "need": 4,
+     "items": [
+      {
+       "a": 73,
+       "b": 54,
+       "op": "+"
+      },
+      {
+       "a": 42,
+       "b": 35,
+       "op": "+"
+      },
+      {
+       "a": 26,
+       "b": 13,
+       "op": "+"
+      },
+      {
+       "a": 79,
+       "b": 39,
+       "op": "-"
+      },
+      {
+       "a": 86,
+       "b": 42,
+       "op": "-"
+      },
+      {
+       "a": 58,
+       "b": 25,
+       "op": "-"
+      }
+     ]
+    },
+    "mul": {
+     "need": 2,
+     "items": [
+      {
+       "a": 23,
+       "b": 7,
+       "op": "×"
+      },
+      {
+       "a": 46,
+       "b": 4,
+       "op": "×"
+      },
+      {
+       "a": 38,
+       "b": 2,
+       "op": "×"
+      },
+      {
+       "a": 52,
+       "b": 6,
+       "op": "×"
+      }
+     ]
+    }
+   }
+  },
+  "3": {
+   "english": {
+    "letter": {
+     "need": 12,
+     "items": [
+      "d",
+      "i",
+      "l",
+      "e",
+      "k",
+      "v",
+      "b",
+      "r",
+      "y",
+      "q",
+      "f",
+      "m",
+      "w",
+      "s",
+      "u"
+     ]
+    },
+    "word": {
+     "need": 12,
+     "items": [
+      "like",
+      "bus",
+      "door",
+      "park",
+      "back",
+      "sit",
+      "fast",
+      "pin",
+      "bell",
+      "hen",
+      "king",
+      "lamp",
+      "mat",
+      "owl",
+      "ship"
+     ]
+    },
+    "sentence": {
+     "need": 4,
+     "items": [
+      "The boy has a blue kite.",
+      "Father works in the field.",
+      "I can see a big moon.",
+      "The cow eats green grass.",
+      "We wash our hands before food."
+     ]
+    },
+    "para": {
+     "need": 3,
+     "variants": [
+      [
+       "Sana lives in a village.",
+       "Her home is near a river.",
+       "Sana likes to swim.",
+       "Her sister swims with her."
+      ],
+      [
+       "Arham loves to eat sweets.",
+       "He buys sweets from the shop.",
+       "Arham gives some to his friends.",
+       "They also like eating sweets."
+      ]
+     ]
+    },
+    "story": {
+     "need": 7,
+     "items": [
+      "One day, Umar was in school.",
+      "He saw some old books on a table.",
+      "Umar picked up a big book.",
+      "The book had many stories.",
+      "Umar took it home to show his mother.",
+      "He read the book with his mother.",
+      "His mother was very happy.",
+      "Umar was happy too.",
+      "Then Umar took the book back to school."
+     ]
+    }
+   },
+   "urdu": {
+    "letter": {
+     "need": 12,
+     "items": [
+      "ک",
+      "گ",
+      "ن",
+      "و",
+      "ہ",
+      "ت",
+      "ٹ",
+      "ج",
+      "د",
+      "ڈ",
+      "ص",
+      "ض",
+      "ف",
+      "ع",
+      "ر"
+     ]
+    },
+    "word": {
+     "need": 12,
+     "items": [
+      "دودھ",
+      "کرسی",
+      "بکری",
+      "پنکھا",
+      "گاڑی",
+      "کھانا",
+      "تارا",
+      "شیر",
+      "نمک",
+      "بارش",
+      "ہاتھ",
+      "آنکھ",
+      "دکان",
+      "موسم",
+      "چابی"
+     ]
+    },
+    "sentence": {
+     "need": 4,
+     "items": [
+      "گائے ہری گھاس کھاتی ہے۔",
+      "ہم کھانے سے پہلے ہاتھ دھوتے ہیں۔",
+      "دادا جان صبح سیر کو جاتے ہیں۔",
+      "بچی نے سرخ کپڑے پہنے ہیں۔",
+      "چاند رات کو چمکتا ہے۔"
+     ]
+    },
+    "para": {
+     "need": 3,
+     "variants": [
+      [
+       "ہمارے گاؤں میں ہر جمعرات کو بازار لگتا ہے۔",
+       "لوگ دور دور سے سبزیاں اور پھل لاتے ہیں۔",
+       "میں امی کے ساتھ سودا خریدنے جاتا ہوں۔",
+       "ہم شام تک گھر واپس آ جاتے ہیں۔"
+      ],
+      [
+       "رضیہ کی سالگرہ اگلے ہفتے ہے۔",
+       "اس کی امی کیک بنانے کی تیاری کر رہی ہیں۔",
+       "رضیہ نے اپنی سہیلیوں کو بلایا ہے۔",
+       "سب مل کر خوب مزہ کریں گے۔"
+      ]
+     ]
+    },
+    "story": {
+     "need": 6,
+     "items": [
+      "عمر کو مچھلیاں پکڑنے کا بہت شوق تھا۔",
+      "ایک دن وہ اپنے دادا کے ساتھ دریا پر گیا۔",
+      "دادا نے اسے کانٹا ڈالنا سکھایا۔",
+      "کافی دیر تک کوئی مچھلی نہ پھنسی۔",
+      "عمر نے صبر سے انتظار کیا۔",
+      "آخر ایک بڑی مچھلی کانٹے میں آ گئی۔",
+      "عمر خوشی سے اچھل پڑا۔",
+      "دادا نے مسکرا کر اس کی پیٹھ تھپتھپائی۔"
+     ]
+    }
+   },
+   "math": {
+    "num2": {
+     "need": 8,
+     "items": [
+      "68",
+      "92",
+      "55",
+      "79",
+      "86",
+      "61",
+      "94",
+      "57",
+      "71",
+      "83"
+     ]
+    },
+    "num3": {
+     "need": 8,
+     "items": [
+      "564",
+      "813",
+      "207",
+      "689",
+      "935",
+      "148",
+      "372",
+      "506",
+      "841",
+      "625"
+     ]
+    },
+    "sub": {
+     "need": 4,
+     "items": [
+      {
+       "a": 91,
+       "b": 47,
+       "op": "+"
+      },
+      {
+       "a": 63,
+       "b": 24,
+       "op": "+"
+      },
+      {
+       "a": 45,
+       "b": 31,
+       "op": "+"
+      },
+      {
+       "a": 87,
+       "b": 57,
+       "op": "-"
+      },
+      {
+       "a": 96,
+       "b": 61,
+       "op": "-"
+      },
+      {
+       "a": 69,
+       "b": 23,
+       "op": "-"
+      }
+     ]
+    },
+    "mul": {
+     "need": 2,
+     "items": [
+      {
+       "a": 19,
+       "b": 8,
+       "op": "×"
+      },
+      {
+       "a": 63,
+       "b": 3,
+       "op": "×"
+      },
+      {
+       "a": 27,
+       "b": 5,
+       "op": "×"
+      },
+      {
+       "a": 41,
+       "b": 9,
+       "op": "×"
+      }
+     ]
+    }
+   }
+  },
+  "4": {
+   "english": {
+    "letter": {
+     "need": 12,
+     "items": [
+      "z",
+      "g",
+      "t",
+      "a",
+      "o",
+      "p",
+      "h",
+      "c",
+      "n",
+      "j",
+      "x",
+      "e",
+      "r",
+      "l",
+      "b"
+     ]
+    },
+    "word": {
+     "need": 12,
+     "items": [
+      "hand",
+      "eat",
+      "moon",
+      "come",
+      "kite",
+      "box",
+      "gate",
+      "boy",
+      "rain",
+      "pot",
+      "star",
+      "zip",
+      "tent",
+      "cow",
+      "wind"
+     ]
+    },
+    "sentence": {
+     "need": 4,
+     "items": [
+      "Zain walks to the market.",
+      "The hen has five eggs.",
+      "It rains in the evening.",
+      "Sara sings a nice song.",
+      "The bus stops at the gate."
+     ]
+    },
+    "para": {
+     "need": 3,
+     "variants": [
+      [
+       "Hamza lives with his mother.",
+       "He wakes up very early.",
+       "He helps his mother cook food.",
+       "Then he goes to school."
+      ],
+      [
+       "Abdul loves to play cricket.",
+       "He goes to the big park.",
+       "He meets his friends there.",
+       "They play cricket in the park."
+      ]
+     ]
+    },
+    "story": {
+     "need": 7,
+     "items": [
+      "Sara was a little girl.",
+      "She lived near a big garden.",
+      "One day, she went to the garden.",
+      "She saw a man selling flowers.",
+      "Sara asked him for a flower.",
+      "The man gave her two big red flowers.",
+      "Then Sara ran back to her home.",
+      "She gave the flowers to her mother.",
+      "They both felt very happy."
+     ]
+    }
+   },
+   "urdu": {
+    "letter": {
+     "need": 12,
+     "items": [
+      "ا",
+      "ب",
+      "ث",
+      "ح",
+      "خ",
+      "ذ",
+      "ڑ",
+      "ژ",
+      "ش",
+      "غ",
+      "ق",
+      "ک",
+      "ط",
+      "ظ",
+      "ے"
+     ]
+    },
+    "word": {
+     "need": 12,
+     "items": [
+      "کلاس",
+      "پیاس",
+      "دانت",
+      "سیب",
+      "سردی",
+      "خرگوش",
+      "لکڑی",
+      "ٹوپی",
+      "جوتا",
+      "کھڑکی",
+      "بچہ",
+      "دادا",
+      "تالاب",
+      "گلاس",
+      "کبوتر"
+     ]
+    },
+    "sentence": {
+     "need": 4,
+     "items": [
+      "ہماری کلاس بہت صاف ہے۔",
+      "مرغی نے پانچ انڈے دیے۔",
+      "شام کو بارش ہوئی۔",
+      "ثانیہ اچھی نظم سناتی ہے۔",
+      "استاد بچوں کو پڑھاتے ہیں۔"
+     ]
+    },
+    "para": {
+     "need": 3,
+     "variants": [
+      [
+       "ہماری لائبریری میں ہزاروں کتابیں موجود ہیں۔",
+       "طالب علم وہاں سے کتابیں گھر لے جا سکتے ہیں۔",
+       "کتاب واپس کرنے کی آخری تاریخ مقرر ہوتی ہے۔",
+       "ہمیں کتابوں کی حفاظت کرنی چاہیے۔"
+      ],
+      [
+       "ہر موسم کی اپنی خوبصورتی اور اہمیت ہوتی ہے۔",
+       "سردیوں میں لوگ گرم کپڑے پہنتے ہیں۔",
+       "گرمیوں میں دن لمبے اور راتیں چھوٹی ہوتی ہیں۔",
+       "بہار کے موسم میں ہر طرف پھول کھلتے ہیں۔"
+      ]
+     ]
+    },
+    "story": {
+     "need": 6,
+     "items": [
+      "پچھلے ہفتے ہمارے محلے میں شدید بارش ہوئی۔",
+      "گلیوں میں پانی بھر گیا اور بچے اسکول نہ جا سکے۔",
+      "خالد نے دیکھا کہ ایک بوڑھی عورت پانی میں پھنسی ہوئی تھی۔",
+      "وہ فوراً اپنے ابو کو بلا لایا۔",
+      "دونوں نے مل کر اس عورت کو محفوظ جگہ پہنچایا۔",
+      "محلے والوں نے خالد کی بہادری کی تعریف کی۔",
+      "اس دن خالد نے سیکھا کہ مصیبت میں دوسروں کی مدد کرنی چاہیے۔"
+     ]
+    }
+   },
+   "math": {
+    "num2": {
+     "need": 8,
+     "items": [
+      "64",
+      "98",
+      "52",
+      "87",
+      "76",
+      "93",
+      "89",
+      "58",
+      "67",
+      "74"
+     ]
+    },
+    "num3": {
+     "need": 8,
+     "items": [
+      "719",
+      "436",
+      "284",
+      "967",
+      "653",
+      "392",
+      "810",
+      "175",
+      "528",
+      "904"
+     ]
+    },
+    "sub": {
+     "need": 4,
+     "items": [
+      {
+       "a": 84,
+       "b": 53,
+       "op": "+"
+      },
+      {
+       "a": 32,
+       "b": 46,
+       "op": "+"
+      },
+      {
+       "a": 21,
+       "b": 16,
+       "op": "+"
+      },
+      {
+       "a": 95,
+       "b": 45,
+       "op": "-"
+      },
+      {
+       "a": 67,
+       "b": 24,
+       "op": "-"
+      },
+      {
+       "a": 48,
+       "b": 15,
+       "op": "-"
+      }
+     ]
+    },
+    "mul": {
+     "need": 2,
+     "items": [
+      {
+       "a": 36,
+       "b": 4,
+       "op": "×"
+      },
+      {
+       "a": 25,
+       "b": 7,
+       "op": "×"
+      },
+      {
+       "a": 48,
+       "b": 3,
+       "op": "×"
+      },
+      {
+       "a": 17,
+       "b": 6,
+       "op": "×"
+      }
+     ]
+    }
+   }
+  }
+ },
+ "flow": {
+  "english": {
+   "order": [
+    "letter",
+    "word",
+    "para",
+    "story"
+   ],
+   "gates": [
+    "letter",
+    "word"
+   ]
+  },
+  "urdu": {
+   "order": [
+    "letter",
+    "word",
+    "para",
+    "story"
+   ],
+   "gates": [
+    "letter",
+    "word"
+   ]
+  },
+  "math": {
+   "order": [
+    "num2",
+    "num3",
+    "sub",
+    "mul"
+   ],
+   "gates": [
+    "num2",
+    "num3"
+   ]
+  }
+ }
+}
