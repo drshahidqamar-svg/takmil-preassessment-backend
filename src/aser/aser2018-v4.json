@@ -9,7 +9,8 @@
   "v1 records (adaptive ASER flow) stay scored against aser2018.json in the backend.",
   "v3 (Oct 27, 2026, 2nd UAT feedback): Sentence section dropped from the flow (reading = Letter, Word, Paragraph, Story); Number Recognition and Place Value are gates in Math; each section's sample (1-4) is chosen at random per child, so a child can get e.g. Sample 3 letters and Sample 1 story. Each step records its own sample number.",
   "Level ranks are unchanged from v1/v2 (Paragraph = 4, Story = 5) so results across versions stay comparable; Sentence (3) is simply not used in v3.",
-  "v4 (Oct 29, 2026, UAT US-8): the third Math section is 'Subtraction and Addition': 3 addition + 3 subtraction questions, pass mark 4 of 6, replacing the booklet's 8 subtraction questions (pass 5). Sample 1 is the team's printed tool (82+64, 51+28, 37+12, 68-28, 77-53, 97-26). Samples 2-4 were written to the same pattern at Shahid's request: first addition crosses 100, other additions need no carrying, subtractions need no borrowing. Section key stays 'sub' (rank 3); v3 records stay scored against aser2018-v3.json."
+  "v4 (Oct 29, 2026, UAT US-8): the third Math section is 'Subtraction and Addition': 3 addition + 3 subtraction questions, pass mark 4 of 6, replacing the booklet's 8 subtraction questions (pass 5). Sample 1 is the team's printed tool (82+64, 51+28, 37+12, 68-28, 77-53, 97-26). Samples 2-4 were written to the same pattern at Shahid's request: first addition crosses 100, other additions need no carrying, subtractions need no borrowing. Section key stays 'sub' (rank 3); v3 records stay scored against aser2018-v3.json.",
+  "v4 also (UAT US-9): the fourth Math section is 'Multiplication and Division': the booklet's first 3 multiplication questions + 3 division questions (3-digit by 1-digit, no remainder), pass mark 4 of 6, replacing 4 multiplication questions (pass 2). Division items are {a: dividend, b: divisor, op: '÷'} and show in long-division style. Sample 1 division is the team's: 5)585, 6)744, 4)848 (US-9 text; its Figure 2 shows 4)784 instead). Samples 2-4 division written to the same pattern. Section key stays 'mul' (rank 4)."
  ],
  "subjects": {
   "english": {
@@ -105,7 +106,7 @@
     },
     {
      "key": "mul",
-     "label": "Multiplication",
+     "label": "Multiplication and Division",
      "rank": 4
     }
    ]
@@ -345,7 +346,7 @@
      ]
     },
     "mul": {
-     "need": 2,
+     "need": 4,
      "items": [
       {
        "a": 34,
@@ -363,9 +364,19 @@
        "op": "×"
       },
       {
-       "a": 18,
+       "a": 585,
        "b": 5,
-       "op": "×"
+       "op": "÷"
+      },
+      {
+       "a": 744,
+       "b": 6,
+       "op": "÷"
+      },
+      {
+       "a": 848,
+       "b": 4,
+       "op": "÷"
       }
      ]
     }
@@ -602,7 +613,7 @@
      ]
     },
     "mul": {
-     "need": 2,
+     "need": 4,
      "items": [
       {
        "a": 23,
@@ -620,9 +631,19 @@
        "op": "×"
       },
       {
-       "a": 52,
-       "b": 6,
-       "op": "×"
+       "a": 596,
+       "b": 4,
+       "op": "÷"
+      },
+      {
+       "a": 738,
+       "b": 3,
+       "op": "÷"
+      },
+      {
+       "a": 486,
+       "b": 2,
+       "op": "÷"
       }
      ]
     }
@@ -861,7 +882,7 @@
      ]
     },
     "mul": {
-     "need": 2,
+     "need": 4,
      "items": [
       {
        "a": 19,
@@ -879,9 +900,19 @@
        "op": "×"
       },
       {
-       "a": 41,
-       "b": 9,
-       "op": "×"
+       "a": 792,
+       "b": 6,
+       "op": "÷"
+      },
+      {
+       "a": 675,
+       "b": 5,
+       "op": "÷"
+      },
+      {
+       "a": 963,
+       "b": 3,
+       "op": "÷"
       }
      ]
     }
@@ -1119,7 +1150,7 @@
      ]
     },
     "mul": {
-     "need": 2,
+     "need": 4,
      "items": [
       {
        "a": 36,
@@ -1137,9 +1168,19 @@
        "op": "×"
       },
       {
-       "a": 17,
-       "b": 6,
-       "op": "×"
+       "a": 952,
+       "b": 7,
+       "op": "÷"
+      },
+      {
+       "a": 628,
+       "b": 4,
+       "op": "÷"
+      },
+      {
+       "a": 684,
+       "b": 2,
+       "op": "÷"
       }
      ]
     }
