@@ -6,7 +6,7 @@ import { verifyPassword, hashPassword, generateTempPassword } from '../utils/pas
 import { signToken, requireAuth, requireRole } from '../middleware/auth.js'
 import { buildScores } from '../utils/scoring.js'
 import { computeIntegrityFlags, FLAG_LABELS } from '../utils/integrity.js'
-import { scoreEvaluation, labelFor, contentFor, SUBJECT_KEYS, CURRENT_VERSION, subjectMarks, samplesUsed } from '../aser/index.js'
+import { scoreEvaluation, labelFor, contentFor, SUBJECT_KEYS, CURRENT_VERSION, subjectMarks, samplesUsed, sectionBreakdown } from '../aser/index.js'
 import { stepDef } from '../aser/aserScoring.js'
 
 const router = Router()
@@ -661,7 +661,15 @@ router.get('/admin/evaluations', async (req, res) => {
 // Per-item detail for one sitting: which items were shown, and how the
 // child did on each -- the drill-down from a student row.
 router.get('/admin/evaluations/:uuid', async (req, res) => {
-  const { rows: [e] } = await query('SELECT tool_version, sample_no, responses FROM evaluations WHERE uuid = $1', [req.params.uuid])
+  const { rows: [e] } = await query(`
+    SELECT e.tool_version, e.sample_no, e.responses, e.started_at, e.completed_at,
+           st.id AS student_id, st.first_name, st.last_name, st.age, st.gender,
+           s.name AS school_name, s.province AS school_province, u.name AS teacher_name
+    FROM evaluations e
+    JOIN students st ON st.id = e.student_id
+    JOIN schools s ON s.id = e.school_id
+    JOIN users u ON u.id = e.teacher_id
+    WHERE e.uuid = $1`, [req.params.uuid])
   if (!e) return res.status(404).json({ error: 'Evaluation not found' })
   const content = contentFor(e.tool_version)
   const detail = {}
@@ -685,7 +693,19 @@ router.get('/admin/evaluations/:uuid', async (req, res) => {
       }
     })
   }
-  res.json({ sampleNo: e.sample_no, toolVersion: e.tool_version, dir: { english: 'ltr', urdu: 'rtl', math: 'ltr' }, detail })
+  res.json({
+    sampleNo: e.sample_no, toolVersion: e.tool_version, dir: { english: 'ltr', urdu: 'rtl', math: 'ltr' }, detail,
+    // US-12/13: header cards and the section-wise table
+    student: {
+      id: e.student_id, firstName: e.first_name, lastName: e.last_name, age: e.age, gender: e.gender,
+      schoolName: e.school_name, schoolProvince: e.school_province, teacherName: e.teacher_name,
+      startedAt: e.started_at, completedAt: e.completed_at
+    },
+    samples: samplesUsed(e.sample_no, e.responses),
+    marks: subjectMarks(e.tool_version, e.sample_no, e.responses),
+    sections: sectionBreakdown(e.tool_version, e.sample_no, e.responses),
+    subjectLabels: Object.fromEntries(SUBJECT_KEYS.map(k => [k, contentFor(e.tool_version)?.subjects[k].label || k]))
+  })
 })
 
 router.get('/admin/evaluations-export', async (req, res) => {
@@ -796,7 +816,7 @@ router.get('/admin/evaluations-export', async (req, res) => {
   // Student Results (US-11): one row per child (most recent sitting),
   // marks / total / % for each subject, 1 mark per item marked correct.
   const studentResultRows = [...latest]
-    .sort((a, b) => a.schoolName.localeCompare(b.schoolName) || `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`))
+    .sort((a, b) => (b.marks.overall?.percent ?? -1) - (a.marks.overall?.percent ?? -1))
     .map(r => {
       const row = {
         'Student': `${r.firstName} ${r.lastName}`,
@@ -804,11 +824,14 @@ router.get('/admin/evaluations-export', async (req, res) => {
         'Province': r.schoolProvince || '',
         'Sample': r.samples.join(', ')
       }
-      for (const s of SUBJECT_KEYS) {
+      // A subject not taken shows "-" and is left out of Overall (US-13).
+      for (const s of ['math', 'urdu', 'english', 'overall']) {
         const m = r.marks[s]
-        row[`${subjectLabel(s)} Marks`] = m ? m.marks : ''
-        row[`${subjectLabel(s)} Total`] = m ? m.total : ''
-        row[`${subjectLabel(s)} %`] = m && m.percent != null ? Number(m.percent.toFixed(2)) : ''
+        const name = s === 'overall' ? 'Overall' : subjectLabel(s)
+        const taken = m && m.taken
+        row[`${name} Marks`] = taken ? m.marks : '–'
+        row[`${name} Total`] = taken ? m.total : '–'
+        row[`${name} %`] = taken && m.percent != null ? Number(m.percent.toFixed(2)) : '–'
       }
       row['Submitted At (PKT)'] = r.completedAt ? formatPKT(r.completedAt) : ''
       return row

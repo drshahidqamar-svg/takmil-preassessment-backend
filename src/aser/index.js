@@ -43,17 +43,24 @@ export function labelFor(version, subject, rank) {
   return content ? levelLabel(content, subject, rank) : String(rank)
 }
 
-// Subject marks (UAT US-11): 1 mark per item marked correct. The subject
-// total is the number of items in every section of the subject -- also
-// the sections the child never reached (stopped at a gate), which score 0.
+// Section-by-section marks (UAT US-11/12/13), used by the Student Results
+// list, the student detail page and the Excel.
+// - 1 mark per item marked correct; anything else (wrong, unmarked) is 0.
+// - Every section of the subject's flow is listed. A section the child
+//   never reached (the subject stopped at a gate) is "not_attempted": 0
+//   marks, but its items stay in the total so percentages are comparable.
 // - A section tried more than once (the second paragraph) counts once, by
 //   its best try, so marks can never exceed the total.
 // - From v3 each section has its own sample; an attempted section is
 //   counted with the sample it used, an unreached one with the
 //   evaluation's sample (only story length differs between samples).
+// - A subject with no section at all (not taken) is marked taken: false;
+//   it shows "-" and is left out of the overall result.
 // - Sections are those of the version's fixed flow (v2+); the adaptive v1
-//   counts every section of the booklet.
-export function subjectMarks(version, sampleNo, responses) {
+//   lists every section of the booklet.
+// Results are computed from the raw marks on every request, so older
+// evaluations always follow the same rules as new ones.
+export function sectionBreakdown(version, sampleNo, responses) {
   const content = contentFor(version)
   if (!content) return null
   const out = {}
@@ -61,27 +68,49 @@ export function subjectMarks(version, sampleNo, responses) {
     const order = content.flow?.[subject]?.order
       || content.subjects[subject].levels.filter(l => l.rank > 0).map(l => l.key)
     const steps = responses?.[subject]?.steps || []
-    let marks = 0
-    let total = 0
-    for (const key of order) {
+    const sections = order.map(key => {
+      const label = content.subjects[subject].levels.find(l => l.key === key)?.label || key
       const tries = steps
         .filter(st => st.level === key)
         .map(st => {
           const def = stepDef(content, subject, st, sampleNo)
-          return def ? { correct: (st.marks || []).filter(m => m === 1).length, total: stepItems(def, st.variant || 0).length } : null
+          if (!def) return null
+          const correct = (st.marks || []).filter(m => m === 1).length
+          return { obtained: correct, total: stepItems(def, st.variant || 0).length, need: def.need, sample: Number(st.sample ?? sampleNo) }
         })
         .filter(Boolean)
-        .sort((a, b) => b.correct - a.correct)
+        .sort((a, b) => b.obtained - a.obtained)
       if (tries.length) {
-        marks += tries[0].correct
-        total += tries[0].total
-      } else {
-        const def = content.samples[String(sampleNo)]?.[subject]?.[key]
-        total += def ? stepItems(def, 0).length : 0
+        const t = tries[0]
+        return { key, label, ...t, status: t.obtained >= t.need ? 'passed' : 'not_passed' }
       }
-    }
-    out[subject] = { marks, total, percent: total ? Math.round((marks / total) * 10000) / 100 : null }
+      const def = content.samples[String(sampleNo)]?.[subject]?.[key]
+      return { key, label, obtained: 0, total: def ? stepItems(def, 0).length : 0, need: def?.need ?? null, sample: null, status: 'not_attempted' }
+    })
+    out[subject] = { taken: steps.length > 0, sections }
   }
+  return out
+}
+
+const pct = (a, b) => (b ? Math.round((a / b) * 10000) / 100 : null)
+
+// Subject and overall marks. Overall = sum of the subjects taken (marks
+// obtained / total marks), the method the programme confirmed on Oct 29.
+export function subjectMarks(version, sampleNo, responses) {
+  const b = sectionBreakdown(version, sampleNo, responses)
+  if (!b) return null
+  const out = {}
+  let om = 0
+  let ot = 0
+  for (const subject of SUBJECT_KEYS) {
+    if (!b[subject].taken) { out[subject] = { taken: false, marks: null, total: null, percent: null }; continue }
+    const marks = b[subject].sections.reduce((a, x) => a + x.obtained, 0)
+    const total = b[subject].sections.reduce((a, x) => a + x.total, 0)
+    out[subject] = { taken: true, marks, total, percent: pct(marks, total) }
+    om += marks
+    ot += total
+  }
+  out.overall = ot ? { taken: true, marks: om, total: ot, percent: pct(om, ot) } : { taken: false, marks: null, total: null, percent: null }
   return out
 }
 
